@@ -367,6 +367,42 @@ export default function App() {
   );
 }
 
+function getRecruitmentChips(
+  now: Date,
+  phaseStart: Date,
+  phaseEnd: Date,
+  maleOpen: boolean,
+  femaleOpen: boolean,
+): { label: string; color: "pink" | "gray" }[] {
+  if (now < phaseStart) return [{ label: "예정", color: "gray" }];
+  if (now >= phaseEnd) return [{ label: "마감", color: "gray" }];
+  if (maleOpen && femaleOpen) return [{ label: "모집 중", color: "pink" }];
+  if (!maleOpen && !femaleOpen) return [{ label: "마감", color: "gray" }];
+  if (!maleOpen && femaleOpen) {
+    return [
+      { label: "남성 모집 마감", color: "gray" },
+      { label: "여성 모집 중", color: "pink" },
+    ];
+  }
+  return [
+    { label: "여성 모집 마감", color: "gray" },
+    { label: "남성 모집 중", color: "pink" },
+  ];
+}
+
+function RecruitmentChips({ now, phaseStart, phaseEnd, maleOpen, femaleOpen }: {
+  now: Date; phaseStart: Date; phaseEnd: Date; maleOpen: boolean; femaleOpen: boolean;
+}) {
+  const chips = getRecruitmentChips(now, phaseStart, phaseEnd, maleOpen, femaleOpen);
+  return (
+    <div className="flex flex-col items-end gap-1 shrink-0">
+      {chips.map((chip) => (
+        <Chip key={chip.label} color={chip.color}>{chip.label}</Chip>
+      ))}
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════ */
@@ -375,8 +411,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
 
   useEffect(() => { refreshSettings(); }, []);
 
-  const phase1Active = now_ >= PHASE1_START && now_ < PHASE2_START;
-  const phase2Active = now_ >= PHASE2_START && now_ < EVENT_START;
+  const now = new Date();
 
   const copy = () => {
     navigator.clipboard.writeText("65201536202013").catch(() => {});
@@ -403,6 +438,42 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
   };
   const firstDisabled = !voteRunning && !intakeOpen;
 
+  const buttons = (
+    <div className="space-y-3 w-full">
+      <button
+        onClick={firstAction}
+        disabled={firstDisabled}
+        className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
+        {firstLabel}
+      </button>
+      <button
+        onClick={() => voteActive && onVote()}
+        disabled={!voteActive}
+        className={`w-full py-4 rounded-2xl font-bold text-[15px] border-[1.5px] transition-all active:scale-[0.98] ${
+          voteActive
+            ? "bg-transparent border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)] cursor-pointer"
+            : "bg-[#1A1A1A] border-[rgba(240,168,190,0.35)] text-[#888888] cursor-not-allowed"
+        }`}>
+        {voteText}
+      </button>
+    </div>
+  );
+
+  if (voteRunning) {
+    return (
+      <div className="max-w-md mx-auto min-h-screen flex flex-col justify-center px-4 pb-16">
+        <div className="w-full flex justify-center pb-6">
+          <ImageWithFallback
+            src={posterImage}
+            alt="THE SECOND SOLO PARTY"
+            className="w-full max-w-xs object-contain"
+          />
+        </div>
+        {buttons}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto pb-16">
       <div className="w-full flex justify-center bg-background pt-6 pb-2 px-6">
@@ -415,33 +486,41 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
 
       <div className="px-4">
         <div className="bg-[#131313] rounded-2xl p-5 border border-[rgba(240,168,190,0.30)] mb-3 mt-5">
-          <p className="text-[10px] tracking-[0.35em] uppercase text-primary mb-4">모집 일정</p>
+          <p className="text-[10px] tracking-normal uppercase text-primary mb-4">모집 일정</p>
           <div className="space-y-3.5">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="flex-1 pr-2">
                 <p className="text-sm font-semibold">1차 모집</p>
                 <p className="text-xs text-muted-foreground mt-0.5">7월 19일 (일) 오후 6시 오픈</p>
                 <p className="text-xs text-muted-foreground">인원 마감 시 모집 종료</p>
               </div>
-              {phase1Active && <Chip color="pink">모집 중</Chip>}
-              {now_ < PHASE1_START && <Chip color="gray">예정</Chip>}
-              {now_ >= PHASE2_START && <Chip color="gray">마감</Chip>}
+              <RecruitmentChips
+                now={now}
+                phaseStart={PHASE1_START}
+                phaseEnd={PHASE2_START}
+                maleOpen={settings.maleOpen}
+                femaleOpen={settings.femaleOpen}
+              />
             </div>
             <div className="h-px bg-[rgba(240,168,190,0.20)]" />
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="flex-1 pr-2">
                 <p className="text-sm font-semibold">2차 모집</p>
                 <p className="text-xs text-muted-foreground mt-0.5">8월 2일 (일) 오후 12시 오픈</p>
               </div>
-              {phase2Active && <Chip color="pink">모집 중</Chip>}
-              {now_ < PHASE2_START && <Chip color="gray">예정</Chip>}
-              {now_ >= EVENT_START && <Chip color="gray">마감</Chip>}
+              <RecruitmentChips
+                now={now}
+                phaseStart={PHASE2_START}
+                phaseEnd={EVENT_START}
+                maleOpen={settings.maleOpen}
+                femaleOpen={settings.femaleOpen}
+              />
             </div>
           </div>
         </div>
 
         <div className="bg-[#131313] rounded-2xl p-5 border border-[rgba(240,168,190,0.30)] mb-3">
-          <p className="text-[10px] tracking-[0.35em] uppercase text-primary mb-4">이벤트 정보</p>
+          <p className="text-[10px] tracking-normal uppercase text-primary mb-4">이벤트 정보</p>
           <div className="space-y-3.5">
             <Row label="일정">
               <div className="text-right">
@@ -472,7 +551,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
         </div>
 
         <div className="bg-[#131313] rounded-2xl p-5 border border-[rgba(240,168,190,0.30)] mb-6">
-          <p className="text-[10px] tracking-[0.35em] uppercase text-primary mb-3.5">환불 안내</p>
+          <p className="text-[10px] tracking-normal uppercase text-primary mb-3.5">환불 안내</p>
           <div className="space-y-2.5">
             <NoticeItem icon={<Check className="w-3 h-3 text-[#F0A8BE]" />} iconBg="bg-[rgba(240,168,190,0.18)]">행사 <strong className="text-[#F5F0F2] font-semibold">7일 전까지</strong> 100% 환불</NoticeItem>
             <NoticeItem icon={<X className="w-3 h-3 text-[#D4183D]" />} iconBg="bg-[rgba(212,24,61,0.15)]">7일 이후 환불 불가</NoticeItem>
@@ -480,24 +559,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
           </div>
         </div>
 
-        <div className="space-y-3">
-          <button
-            onClick={firstAction}
-            disabled={firstDisabled}
-            className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
-            {firstLabel}
-          </button>
-          <button
-            onClick={() => voteActive && onVote()}
-            disabled={!voteActive}
-            className={`w-full py-4 rounded-2xl font-bold text-[15px] border-[1.5px] transition-all active:scale-[0.98] ${
-              voteActive
-                ? "bg-transparent border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)] cursor-pointer"
-                : "bg-[#1A1A1A] border-[rgba(240,168,190,0.35)] text-[#888888] cursor-not-allowed"
-            }`}>
-            {voteText}
-          </button>
-        </div>
+        {buttons}
       </div>
     </div>
   );
@@ -1712,7 +1774,7 @@ function NoticeItem({ icon, iconBg, children }: { icon: React.ReactNode; iconBg:
 
 function Chip({ color, children }: { color: "pink" | "gray"; children: React.ReactNode }) {
   return (
-    <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border shrink-0 ${
+    <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border shrink-0 whitespace-nowrap ${
       color === "pink"
         ? "border-[rgba(240,168,190,0.5)] bg-[rgba(240,168,190,0.12)] text-[#F0A8BE]"
         : "border-[rgba(240,168,190,0.20)] text-[#888888]"
