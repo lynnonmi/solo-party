@@ -330,13 +330,9 @@ export default function App() {
   }, [settings.isClosed, voter, view, appLoading]);
 
   useEffect(() => {
-    if (appLoading || view !== "home") return;
-    if (voter) {
-      const next = resolveVoteView(voter, settings);
-      if (next) go(next);
-    } else if (settings.isOpen || settings.isClosed) {
-      go("vote-login");
-    }
+    if (appLoading || view !== "home" || !voter) return;
+    const next = resolveVoteView(voter, settings);
+    if (next) go(next);
   }, [appLoading, voter, view, settings]);
 
   const handleVoteLogin = (a: Application, token: string) => {
@@ -391,20 +387,21 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
   const voteActive = settings.isClosed || settings.isOpen;
   const intakeOpen = settings.maleOpen || settings.femaleOpen;
   const voteRunning = settings.isOpen;
-  const canApply = intakeOpen && !voteRunning;
 
-  const firstLabel = canApply
-    ? "참가 신청하기"
-    : hasVoter
-      ? "내 신청서 확인하기"
-      : intakeOpen
-        ? "참가 신청하기"
-        : "신청 마감";
+  const firstLabel = voteRunning
+    ? "내 신청서 확인하기"
+    : intakeOpen
+      ? "참가 신청하기"
+      : "신청 마감";
   const firstAction = () => {
-    if (canApply) go("apply");
-    else if (hasVoter) go("my-app");
-    else if (intakeOpen) go("apply");
+    if (voteRunning) {
+      if (hasVoter) go("my-app");
+      else go("vote-login");
+    } else if (intakeOpen) {
+      go("apply");
+    }
   };
+  const firstDisabled = !voteRunning && !intakeOpen;
 
   return (
     <div className="max-w-md mx-auto pb-16">
@@ -486,7 +483,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
         <div className="space-y-3">
           <button
             onClick={firstAction}
-            disabled={!canApply && !hasVoter && !intakeOpen}
+            disabled={firstDisabled}
             className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
             {firstLabel}
           </button>
