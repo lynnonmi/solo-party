@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect, ChangeEvent, useCallback } from "react";
-import { adminApi } from "./adminApi";
 import { createClient } from "@supabase/supabase-js";
 import {
   ChevronLeft, ChevronRight, Copy, CheckCheck, Heart, X, Check,
-  Plus, LogOut, BarChart2, ClipboardList, ChevronDown, ChevronUp,
-  Eye, EyeOff, AlertCircle, MessageSquare, Download, Users,
-  Camera, Award, Zap
+  Plus, LogOut, ClipboardList, ChevronDown, ChevronUp,
+  Eye, EyeOff, AlertCircle, MessageSquare,
+  Camera
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
 import posterImage from "@/imports/Group_5.png";
@@ -51,17 +50,50 @@ function getSupabase(sessionToken?: string | null) {
   return _sbCache[cacheKey];
 }
 
+function voteRpcErrorMessage(msg: string | undefined, fallback: string): string {
+  const m = msg ?? "";
+  if (m.includes("PGRST202") || m.includes("submit_single_vote") || m.includes("get_my_votes") || m.includes("get_votes_for_me")) {
+    return "투표 기능 DB 설정이 필요합니다. 터미널에서 npm run db:push 를 실행해주세요.";
+  }
+  if (m.includes("vote not open")) return "지금은 투표할 수 없습니다. 관리자가 투표를 열어야 합니다.";
+  if (m.includes("max 4")) return "투표는 최대 4명까지 가능합니다.";
+  if (m.includes("message required")) return "쪽지를 입력해주세요.";
+  if (m.includes("message too long")) return "쪽지는 200자 이내로 입력해주세요.";
+  if (m.includes("invalid target")) return "투표할 수 없는 대상입니다.";
+  if (m.includes("unauthorized")) return "로그인이 만료되었습니다. 다시 로그인해주세요.";
+  return fallback;
+}
+
 /* ═══════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════ */
-type View = "home" | "apply" | "success" | "vote-login" | "vote-profile" | "vote" | "vote-result" | "admin-login" | "admin" | "my-app";
+type View = "home" | "apply" | "success" | "vote-login" | "vote-profile" | "vote" | "vote-result" | "my-app";
 type Gender = "남성" | "여성";
 type AppStatus = "pending" | "approved" | "rejected";
 type GenderFilter = "전체" | "남성" | "여성";
 type StatusFilter = "전체" | "pending" | "approved" | "rejected";
 type MatchResponse = "pending" | "going" | "not-going";
-type AdminTab = "apps" | "vote" | "matching";
-type PCSection = "applications" | "vote-management" | "matching";
+
+interface ReceivedVote {
+  voterId: string;
+  nickname: string;
+  gender: Gender;
+  age: string;
+  mbti: string;
+  job: string;
+  jobDetail?: string;
+  currentWork: string;
+  lifeGoal: string;
+  hobbies: string;
+  instagram: string;
+  idealType: string;
+  charm: string;
+  celebrity: string;
+  voteProfilePhoto?: string;
+  photos: string[];
+  message: string;
+  createdAt: string;
+}
 
 interface Application {
   id: string;
@@ -118,6 +150,7 @@ interface Match {
 ═══════════════════════════════════════════ */
 const MAX_PHOTOS       = 3;
 const MAX_VOTES        = 4;
+const MAX_VOTE_MESSAGE = 200;
 const SMS_TEXT        = "승인문자";
 
 const MBTI_LIST = ["INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP","ISTJ","ISFJ","ESTJ","ESFJ","ISTP","ISFP","ESTP","ESFP"];
@@ -138,41 +171,59 @@ async function fileToBlob(file: File): Promise<Blob> {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const MAX = 700, s = Math.min(1, MAX / Math.max(img.width, img.height));
+      const MAX = 1200, s = Math.min(1, MAX / Math.max(img.width, img.height));
       const c = document.createElement("canvas");
       c.width = img.width * s; c.height = img.height * s;
-      c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+      const ctx = c.getContext("2d")!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      c.toBlob((blob) => { if (blob) res(blob); }, "image/jpeg", 0.78);
+      c.toBlob((blob) => { if (blob) res(blob); }, "image/jpeg", 0.88);
     };
     img.src = url;
   });
+}
+
+function photoDisplayUrl(url: string, width = 600): string {
+  if (!url || !url.includes("/storage/v1/object/public/")) return url;
+  return url.replace("/object/public/", "/render/image/public/") + `?width=${width}&quality=88&resize=cover`;
+}
+
+function resolveVoteView(app: Application, settings: VoteSettings): View | null {
+  if (settings.isClosed) return "vote-result";
+  if (settings.isOpen) {
+    if (app.voteProfilePhoto) return "vote";
+    return "vote-profile";
+  }
+  return null;
+}
+
+function VotePhoto({ src, alt, className, width = 400 }: {
+  src: string; alt: string; className?: string; width?: number;
+}) {
+  return (
+    <img
+      src={photoDisplayUrl(src, width)}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+    />
+  );
 }
 
 function getProfilePhoto(app: Partial<Application>): string | null {
   return app.voteProfilePhoto || app.photos?.[0] || null;
 }
 
-function downloadCSV(apps: Application[]) {
-  const h = ["이름","성별","나이","닉네임","MBTI","연락처","직업","상태","환불 은행","환불 계좌번호"];
-  const sl: Record<AppStatus, string> = { pending: "대기", approved: "승인", rejected: "거절" };
-  const rows = apps.map(a => [a.name, a.gender, a.age, a.nickname, a.mbti, a.contact, a.job + (a.jobDetail ? ` (${a.jobDetail})` : ""), sl[a.status], a.refundBank, a.refundAccount]);
-  const csv = [h, ...rows].map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const el = document.createElement("a"); el.href = url; el.download = "솔로파티_신청자목록.csv"; el.click();
-  URL.revokeObjectURL(url);
+function normalizeContact(raw: string): string {
+  let d = raw.replace(/\D/g, "");
+  if (d.length === 10 && d.startsWith("10")) d = "0" + d;
+  if (d.length === 12 && d.startsWith("82")) d = "0" + d.slice(2);
+  return d;
 }
 
-function useIsPC() {
-  const [isPC, setIsPC] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768);
-  useEffect(() => {
-    const h = () => setIsPC(window.innerWidth >= 768);
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, []);
-  return isPC;
-}
 
 /* ═══════════════════════════════════════════
    APP ROOT
@@ -241,30 +292,58 @@ export default function App() {
             };
             setVoter(app);
             setSessionToken(savedToken);
-            
-            if (currentSettings?.is_closed) {
-              setView("vote-result");
-            } else if (currentSettings?.is_open) {
-              setView("vote");
-            }
+
+            const voteSettings: VoteSettings = {
+              isOpen: currentSettings?.is_open ?? false,
+              isClosed: currentSettings?.is_closed ?? false,
+              closedAt: currentSettings?.closed_at,
+              maleOpen: currentSettings?.male_open ?? true,
+              femaleOpen: currentSettings?.female_open ?? true,
+            };
+            setView(resolveVoteView(app, voteSettings) ?? "home");
           } else {
             localStorage.removeItem("sp_voter_token");
           }
         } catch {
           localStorage.removeItem("sp_voter_token");
         }
+      } else if (currentSettings?.is_open || currentSettings?.is_closed) {
+        setView("vote-login");
       }
       setAppLoading(false);
     };
     initApp();
   }, []);
 
+  useEffect(() => {
+    const poll = setInterval(fetchGlobalSettings, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") fetchGlobalSettings(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(poll); document.removeEventListener("visibilitychange", onVisible); };
+  }, []);
+
+  useEffect(() => {
+    if (appLoading || !voter) return;
+    if (settings.isClosed && (view === "vote" || view === "vote-profile")) {
+      go("vote-result");
+    }
+  }, [settings.isClosed, voter, view, appLoading]);
+
+  useEffect(() => {
+    if (appLoading || view !== "home") return;
+    if (voter) {
+      const next = resolveVoteView(voter, settings);
+      if (next) go(next);
+    } else if (settings.isOpen || settings.isClosed) {
+      go("vote-login");
+    }
+  }, [appLoading, voter, view, settings]);
+
   const handleVoteLogin = (a: Application, token: string) => {
     setVoter(a);
     setSessionToken(token);
     localStorage.setItem("sp_voter_token", token);
-    if (settings.isClosed) go("vote-result");
-    else go("vote-profile");
+    go(resolveVoteView(a, settings) ?? "home");
   };
 
   const handleLogout = () => {
@@ -280,16 +359,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      {view === "home"         && <HomePage go={go} settings={settings} refreshSettings={fetchGlobalSettings} hasVoter={!!voter} />}
+      {view === "home"         && <HomePage go={go} settings={settings} refreshSettings={fetchGlobalSettings} hasVoter={!!voter} onVote={() => voter ? go(resolveVoteView(voter, settings) ?? "vote-login") : go("vote-login")} />}
       {view === "apply"        && <ApplyPage go={go} settings={settings} />}
       {view === "success"      && <SuccessPage go={go} />}
       {view === "vote-login"   && <VoteLoginPage go={go} onLogin={handleVoteLogin} settings={settings} />}
-      {view === "vote-profile" && voter && <VoteProfilePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} />}
+      {view === "vote-profile" && voter && <VoteProfilePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote"         && voter && <VotePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote-result"  && voter && <VoteResultPage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
-      {view === "admin-login"  && <AdminLoginPage go={go} />}
-      {view === "admin"        && <AdminPage go={go} />}
-      {view === "my-app"       && voter && <MyApplicationPage voter={voter} go={go} />}
+      {view === "my-app"       && voter && <MyApplicationPage voter={voter} onBack={() => go(resolveVoteView(voter, settings) ?? "home")} />}
     </div>
   );
 }
@@ -297,7 +374,7 @@ export default function App() {
 /* ═══════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════ */
-function HomePage({ go, settings, refreshSettings, hasVoter }: { go: (v: View) => void; settings: VoteSettings; refreshSettings: () => Promise<any>; hasVoter: boolean }) {
+function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v: View) => void; settings: VoteSettings; refreshSettings: () => Promise<any>; hasVoter: boolean; onVote: () => void }) {
   const [copied,   setCopied]   = useState(false);
 
   useEffect(() => { refreshSettings(); }, []);
@@ -312,6 +389,22 @@ function HomePage({ go, settings, refreshSettings, hasVoter }: { go: (v: View) =
 
   const voteText   = settings.isClosed ? "결과 확인하기" : settings.isOpen ? "투표하기" : "투표 준비 중";
   const voteActive = settings.isClosed || settings.isOpen;
+  const intakeOpen = settings.maleOpen || settings.femaleOpen;
+  const voteRunning = settings.isOpen;
+  const canApply = intakeOpen && !voteRunning;
+
+  const firstLabel = canApply
+    ? "참가 신청하기"
+    : hasVoter
+      ? "내 신청서 확인하기"
+      : intakeOpen
+        ? "참가 신청하기"
+        : "신청 마감";
+  const firstAction = () => {
+    if (canApply) go("apply");
+    else if (hasVoter) go("my-app");
+    else if (intakeOpen) go("apply");
+  };
 
   return (
     <div className="max-w-md mx-auto pb-16">
@@ -392,12 +485,13 @@ function HomePage({ go, settings, refreshSettings, hasVoter }: { go: (v: View) =
 
         <div className="space-y-3">
           <button
-            onClick={() => settings.isOpen || hasVoter ? go(hasVoter ? "my-app" : "vote-login") : go("apply")}
-            className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98]">
-            {settings.isOpen || hasVoter ? "내 신청서 확인하기" : "참가 신청하기"}
+            onClick={firstAction}
+            disabled={!canApply && !hasVoter && !intakeOpen}
+            className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
+            {firstLabel}
           </button>
           <button
-            onClick={() => voteActive && go("vote-login")}
+            onClick={() => voteActive && onVote()}
             disabled={!voteActive}
             className={`w-full py-4 rounded-2xl font-bold text-[15px] border-[1.5px] transition-all active:scale-[0.98] ${
               voteActive
@@ -405,12 +499,6 @@ function HomePage({ go, settings, refreshSettings, hasVoter }: { go: (v: View) =
                 : "bg-[#1A1A1A] border-[rgba(240,168,190,0.35)] text-[#888888] cursor-not-allowed"
             }`}>
             {voteText}
-          </button>
-        </div>
-
-        <div className="text-center mt-14">
-          <button onClick={() => go("admin-login")} className="text-[11px] text-muted-foreground/25 hover:text-muted-foreground/50 transition-colors">
-            관리자
           </button>
         </div>
       </div>
@@ -506,46 +594,11 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
   const submit = async () => {
     setLoading(true);
     try {
-      // Supabase 미설정 시 localStorage 폴백
       if (!SB_READY) {
-        const base64Photos: string[] = await Promise.all(
-          uploadFiles.map(
-            (file) =>
-              new Promise<string>((res) => {
-                const img = new Image();
-                const url = URL.createObjectURL(file);
-                img.onload = () => {
-                  const MAX = 700, s = Math.min(1, MAX / Math.max(img.width, img.height));
-                  const c = document.createElement("canvas");
-                  c.width = img.width * s; c.height = img.height * s;
-                  c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-                  URL.revokeObjectURL(url);
-                  res(c.toDataURL("image/jpeg", 0.78));
-                };
-                img.src = url;
-              })
-          )
-        );
-        const apps = JSON.parse(localStorage.getItem("sp_apps_v2") || "[]");
-        apps.push({
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-          name: form.name!.trim(), gender: form.gender, age: form.age,
-          nickname: form.nickname!.trim(), mbti: form.mbti,
-          contact: form.contact!.trim(), job: form.job,
-          jobDetail: form.jobDetail?.trim(),
-          currentWork: form.currentWork!.trim(), lifeGoal: form.lifeGoal!.trim(),
-          hobbies: form.hobbies!.trim(), instagram: form.instagram!.trim(),
-          idealType: form.idealType!.trim(), charm: form.charm!.trim(),
-          celebrity: form.celebrity!.trim(), photos: base64Photos,
-          refundBank: form.refundBank!.trim(), refundAccount: form.refundAccount!.trim(),
-          status: "pending", smsSent: false, submittedAt: new Date().toISOString(),
-        });
-        localStorage.setItem("sp_apps_v2", JSON.stringify(apps));
-        go("success");
+        setErrors({ global: "Supabase가 연결되지 않았습니다. 관리자에게 문의해 주세요." });
         return;
       }
 
-      // Supabase 연동 시 Storage 업로드
       const uploadedUrls: string[] = [];
       const supabase = getSupabase();
       for (const file of uploadFiles) {
@@ -561,7 +614,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
 
       const { error: insertErr } = await supabase.from("applicants").insert({
         name: form.name!.trim(), gender: form.gender, age: parseInt(form.age!, 10),
-        nickname: form.nickname!.trim(), mbti: form.mbti, contact: form.contact!.trim(),
+        nickname: form.nickname!.trim(), mbti: form.mbti, contact: normalizeContact(form.contact!.trim()),
         job: form.job, job_detail: form.jobDetail?.trim(),
         current_work: form.currentWork!.trim(), life_goal: form.lifeGoal!.trim(),
         alone_time: form.hobbies!.trim(), instagram: form.instagram!.trim(),
@@ -752,9 +805,43 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         <div className="space-y-5">
           <div>
             <p className="text-sm font-semibold mb-3">이용약관</p>
-            <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4 text-xs text-muted-foreground space-y-4 leading-relaxed max-h-64 overflow-y-auto">
-              <section><p className="text-foreground font-semibold text-sm mb-2">1. 환불 정책</p><p>행사 7일 전까지 환불 신청 시 100% 환불됩니다.</p></section>
-              <section><p className="text-foreground font-semibold text-sm mb-2">2. 촬영 안내</p><p>촬영된 콘텐츠는 채널에 업로드될 수 있으나, 식별 정보는 노출되지 않습니다.</p></section>
+            <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4 text-xs text-muted-foreground space-y-4 leading-relaxed max-h-80 overflow-y-auto">
+              <section>
+                <p className="text-foreground font-semibold text-sm mb-2">1. 환불 정책</p>
+                <div className="space-y-1.5">
+                  <p>행사 7일 전까지 환불 신청 시 100% 환불됩니다.</p>
+                  <p>7일 이내에는 환불이 불가합니다.</p>
+                  <p>운영진의 판단으로 승인이 거절된 경우에는 100% 환불됩니다.</p>
+                </div>
+              </section>
+              <section>
+                <p className="text-foreground font-semibold text-sm mb-2">2. 촬영 안내</p>
+                <div className="space-y-1.5">
+                  <p>파티 진행 중 스탭이 현장을 촬영하는 경우가 있습니다.</p>
+                  <p>참가자가 촬영 영상에 포함될 경우 모자이크 처리됩니다.</p>
+                  <p>촬영된 콘텐츠는 김해린 채널에 업로드될 수 있으나, 개인 식별 정보는 절대 노출되지 않으니 걱정하지 않으셔도 됩니다.</p>
+                </div>
+              </section>
+              <section>
+                <p className="text-foreground font-semibold text-sm mb-2">3. 사고 책임</p>
+                <p>참가자는 행사 중 본인의 안전에 유의해야 하며, 개인 부주의로 발생한 사고에 대해서는 본인이 책임을 집니다.</p>
+              </section>
+              <section>
+                <p className="text-foreground font-semibold text-sm mb-2">4. 행동 수칙</p>
+                <div className="space-y-1.5">
+                  <p>만취 상태이거나 타인에게 불쾌감 또는 피해를 주는 행동을 하는 경우 즉시 퇴장 조치될 수 있습니다.</p>
+                  <p>모두가 즐거운 파티를 위해 상호 존중을 부탁드립니다.</p>
+                </div>
+              </section>
+              <section>
+                <p className="text-foreground font-semibold text-sm mb-2">5. 승인 안내</p>
+                <div className="space-y-1.5">
+                  <p>신청 완료 후 승인이 되면 문자로 안내 사항이 발송됩니다.</p>
+                  <p>발송은 24시간 이내로 예정되어 있습니다.</p>
+                  <p>원활한 운영을 위해 신청 내용을 검토하는 시간이 필요합니다.</p>
+                  <p>24시간 이후에도 안내 문자가 오지 않는 경우 CS로 문의해주세요.</p>
+                </div>
+              </section>
             </div>
           </div>
           <CheckRow checked={termsAgreed} onToggle={() => { setTermsAgreed(!termsAgreed); setErrors((e) => ({ ...e, terms: "" })); }} label="위 이용약관을 모두 읽었으며 동의합니다." error={errors.terms} />
@@ -793,8 +880,28 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
               <h3 className="font-semibold text-sm">개인정보 수집 이용 동의서</h3>
               <button onClick={() => setPrivacyOpen(false)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
             </div>
-            <div className="px-5 py-4 text-xs text-muted-foreground space-y-3.5 leading-relaxed max-h-[60vh] overflow-y-auto">
-              <p>솔로파티 참가자 확인 및 운영 목적을 위해 개인정보를 수집합니다.</p>
+            <div className="px-5 py-4 text-xs text-muted-foreground space-y-4 leading-relaxed max-h-[60vh] overflow-y-auto">
+              <div>
+                <p className="text-foreground font-medium mb-1">개인정보 처리자</p>
+                <p>김해린</p>
+              </div>
+              <div>
+                <p className="text-foreground font-medium mb-1">개인정보 수집 이용 목적</p>
+                <p>솔로파티 참가자 승인 및 솔로파티 운영</p>
+              </div>
+              <div>
+                <p className="text-foreground font-medium mb-1">수집하는 개인정보 항목</p>
+                <p>실명, 성별, 나이, 파티에서 사용할 닉네임, MBTI, 연락처, 현재 직업, 현재 하고 있는 일, 삶의 목표, 쉴 때 하는 일, 인스타그램 아이디, 이상형, 본인의 매력, 닮은 꼴 연예인, 본인 사진, 환불 은행, 환불 계좌번호</p>
+              </div>
+              <div>
+                <p className="text-foreground font-medium mb-1">개인정보의 보유 및 이용 기간</p>
+                <p>2026년 8월 30일까지</p>
+              </div>
+              <div>
+                <p className="text-foreground font-medium mb-1">동의 거부권 및 동의 거부에 따른 불이익</p>
+                <p>위 개인정보의 수집 및 이용에 동의를 거부할 권리가 있습니다. 동의를 거부할 경우 솔로파티 참가 신청이 자동으로 취소됩니다.</p>
+              </div>
+              <p className="text-foreground pt-1">위 내용에 따라 개인정보를 수집하고 이용하는 데 동의합니다.</p>
             </div>
             <div className="px-5 py-4 border-t border-border">
               <button onClick={() => setPrivacyOpen(false)} className="w-full py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity">확인</button>
@@ -846,10 +953,14 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
     try {
       const { data, error: rpcErr } = await getSupabase().rpc("verify_applicant", {
         p_name:    name.trim(),
-        p_contact: contact.trim(),
+        p_contact: normalizeContact(contact.trim()),
       });
-      if (rpcErr || !data?.length) {
-        setError("이름과 연락처가 일치하는 승인된 참가자를 찾을 수 없습니다.");
+      if (rpcErr) {
+        setError("로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+        return;
+      }
+      if (!data?.length) {
+        setError("이름과 연락처가 일치하는 승인된 참가자를 찾을 수 없습니다. 신청 시 입력한 이름(주민등록상)과 연락처를 확인해주세요.");
         return;
       }
       const row = data[0];
@@ -922,55 +1033,66 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
 /* ═══════════════════════════════════════════
    VOTE PROFILE PAGE
 ═══════════════════════════════════════════ */
-function VoteProfilePage({ voter, go, onUpdate, sessionToken }: {
+function VoteProfilePage({ voter, go, onUpdate, sessionToken, onLogout }: {
   voter: Application; go: (v: View) => void;
-  onUpdate: (a: Application) => void; sessionToken: string | null;
+  onUpdate: (a: Application) => void; sessionToken: string | null; onLogout: () => void;
 }) {
-  const [selected,     setSelected]     = useState<string | null>(voter.voteProfilePhoto || voter.photos?.[0] || null);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [saving,       setSaving]       = useState(false);
-  const [saveErr,      setSaveErr]      = useState("");
+  const [selected, setSelected] = useState<string | null>(voter.voteProfilePhoto || voter.photos?.[0] || null);
+  const [saving,   setSaving]   = useState(false);
+  const [saveErr,  setSaveErr]  = useState("");
   const sb = getSupabase(sessionToken);
 
   useEffect(() => {
-    sb.rpc("get_my_submission").then(({ data }) => setHasSubmitted(!!data?.length));
-  }, []);
+    if (voter.voteProfilePhoto) go("vote");
+  }, [voter.voteProfilePhoto, go]);
 
   const confirm = async () => {
-    if (!selected) return;
+    if (!selected || voter.voteProfilePhoto) return;
     setSaving(true);
     setSaveErr("");
     const { error } = await sb.rpc("update_vote_profile_photo", { p_photo_url: selected });
-    if (error) { setSaveErr("사진 저장 중 오류가 발생했습니다."); setSaving(false); return; }
+    if (error) {
+      setSaveErr(error.message?.includes("profile already set")
+        ? "프로필 사진은 한 번 설정하면 변경할 수 없습니다."
+        : "사진 저장 중 오류가 발생했습니다.");
+      setSaving(false);
+      return;
+    }
     onUpdate({ ...voter, voteProfilePhoto: selected });
     setSaving(false);
     go("vote");
   };
 
+  if (voter.voteProfilePhoto) return null;
+
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
-      <div className="flex items-center gap-4 pt-6 pb-6">
-        <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-        <div className="flex-1">
+      <div className="flex items-center justify-between pt-6 pb-6">
+        <div>
           <h2 className="text-lg font-semibold">프로필 사진 선택</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">투표 화면에 노출될 사진을 선택해주세요</p>
+          <p className="text-xs text-muted-foreground mt-0.5">한 번 선택하면 변경할 수 없습니다</p>
         </div>
+        <button onClick={onLogout} className="flex items-center gap-1 text-xs border border-border rounded-lg px-2.5 py-1.5 text-muted-foreground hover:text-foreground">
+          <LogOut className="w-3.5 h-3.5" /> 로그아웃
+        </button>
       </div>
 
       {selected && (
         <div className="mb-6">
-          <p className="text-xs text-muted-foreground mb-2">현재 선택된 프로필</p>
-          <img src={selected} alt="선택된 프로필" className="w-full h-52 object-cover rounded-2xl" />
+          <p className="text-xs text-muted-foreground mb-2">선택한 프로필 미리보기</p>
+          <div className="w-full aspect-[3/4] rounded-2xl overflow-hidden">
+            <VotePhoto src={selected} alt="선택된 프로필" className="w-full h-full object-cover" width={800} />
+          </div>
         </div>
       )}
 
       {voter.photos?.length > 1 && (
         <div className="mb-6">
-          <p className="text-xs text-muted-foreground mb-3">다른 사진으로 변경</p>
+          <p className="text-xs text-muted-foreground mb-3">사진 선택</p>
           <div className="grid grid-cols-3 gap-2">
             {voter.photos.map((p, i) => (
               <button key={i} onClick={() => setSelected(p)} className="relative aspect-square">
-                <img src={p} alt={`사진 ${i + 1}`} className="w-full h-full object-cover rounded-xl" />
+                <VotePhoto src={p} alt={`사진 ${i + 1}`} className="w-full h-full object-cover rounded-xl" width={300} />
                 {selected === p && (
                   <div className="absolute inset-0 bg-primary/35 rounded-xl flex items-center justify-center">
                     <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center"><Check className="w-4 h-4 text-white" /></div>
@@ -982,139 +1104,218 @@ function VoteProfilePage({ voter, go, onUpdate, sessionToken }: {
         </div>
       )}
 
-      {hasSubmitted && (
-        <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-4">
-          <p className="text-sm text-primary/90">이미 투표를 완료했습니다. 프로필 사진만 변경할 수 있습니다.</p>
-        </div>
-      )}
-
       {saveErr && <p className="text-xs text-destructive mb-3">{saveErr}</p>}
       <button onClick={confirm} disabled={!selected || saving}
         className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
-        {saving ? "저장 중..." : hasSubmitted ? "사진 저장 후 투표 현황 보기" : "이 사진으로 투표 시작하기"}
+        {saving ? "저장 중..." : "이 사진으로 투표 시작하기"}
       </button>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════
-   VOTE PAGE
-═══════════════════════════════════════════ */
 function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
   voter: Application; go: (v: View) => void;
   onUpdate: (a: Application) => void; sessionToken: string | null; onLogout: () => void;
 }) {
   const sb = getSupabase(sessionToken);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [submitted,   setSubmitted]   = useState(false);
   const [candidates,  setCandidates]  = useState<Pick<Application, "id"|"nickname"|"gender"|"voteProfilePhoto">[]>([]);
+  const [myVotes,     setMyVotes]     = useState<Record<string, string>>({});
+  const [selectedId,  setSelectedId]  = useState<string | null>(null);
+  const [message,     setMessage]     = useState("");
   const [loading,     setLoading]     = useState(true);
   const [submitting,  setSubmitting]  = useState(false);
+  const [removing,    setRemoving]    = useState(false);
+  const [error,       setError]       = useState("");
   const [showMyModal, setShowMyModal] = useState(false);
 
-  useEffect(() => {
+  const votedCount = Object.keys(myVotes).length;
+  const selected = candidates.find(c => c.id === selectedId) ?? null;
+  const hasVotedSelected = selected ? selected.id in myVotes : false;
+  const atMaxVotes = votedCount >= MAX_VOTES && !hasVotedSelected;
+
+  const loadVoteState = async () => {
     const oppositeGender = voter.gender === "남성" ? "여성" : "남성";
-    Promise.all([
+    const [candRes, votesRes] = await Promise.all([
       getSupabase().from("approved_for_voting")
         .select("id, nickname, gender, vote_profile_photo")
         .eq("gender", oppositeGender)
         .neq("id", voter.id),
-      sb.rpc("get_my_submission"),
-    ]).then(([candRes, subRes]) => {
-      if (candRes.data) {
-        setCandidates(candRes.data.map((c: Record<string, string>) => ({
-          id: c.id, nickname: c.nickname, gender: c.gender as Gender,
-          voteProfilePhoto: c.vote_profile_photo ?? undefined,
-        })));
-      }
-      if (subRes.data?.length) {
-        setSelectedIds(subRes.data[0].voted_for_ids ?? []);
-        setSubmitted(true);
-      }
-      setLoading(false);
+      sb.rpc("get_my_votes"),
+    ]);
+    if (candRes.data) {
+      setCandidates(candRes.data.map((c: Record<string, string>) => ({
+        id: c.id, nickname: c.nickname, gender: c.gender as Gender,
+        voteProfilePhoto: c.vote_profile_photo ?? undefined,
+      })));
+    }
+    const votes: Record<string, string> = {};
+    (votesRes.data ?? []).forEach((v: { voted_for_id: string; message: string }) => {
+      votes[v.voted_for_id] = v.message;
     });
-  }, []);
-
-  const toggle = (id: string) => {
-    if (submitted) return;
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : prev.length < MAX_VOTES ? [...prev, id] : prev
-    );
+    setMyVotes(votes);
+    setLoading(false);
   };
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    loadVoteState();
+    const onVisible = () => { if (document.visibilityState === "visible") loadVoteState(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [voter.id, sessionToken]);
+
+  const openCandidate = (id: string) => {
+    setSelectedId(id);
+    setMessage(myVotes[id] ?? "");
+    setError("");
+  };
+
+  const closeCandidate = () => {
+    setSelectedId(null);
+    setMessage("");
+    setError("");
+  };
+
+  const handleSendVote = async () => {
+    if (!selected || atMaxVotes) return;
+    const trimmed = message.trim();
+    if (!trimmed) { setError("쪽지를 입력해주세요."); return; }
     setSubmitting(true);
-    const { error } = await sb.rpc("submit_vote", { p_voted_for_ids: selectedIds });
-    if (!error) setSubmitted(true);
+    setError("");
+    const { error: rpcErr } = await sb.rpc("submit_single_vote", {
+      p_voted_for_id: selected.id,
+      p_message: trimmed,
+    });
+    if (rpcErr) {
+      setError(voteRpcErrorMessage(rpcErr.message, "투표 전송에 실패했습니다."));
+    } else {
+      setMyVotes(prev => ({ ...prev, [selected.id]: trimmed }));
+      closeCandidate();
+    }
     setSubmitting(false);
   };
 
-  if (submitted) {
+  const handleRemoveVote = async () => {
+    if (!selected || !hasVotedSelected) return;
+    setRemoving(true);
+    setError("");
+    const { error: rpcErr } = await sb.rpc("remove_single_vote", { p_voted_for_id: selected.id });
+    if (rpcErr) {
+      setError(voteRpcErrorMessage(rpcErr.message, "투표 취소에 실패했습니다."));
+    } else {
+      setMyVotes(prev => {
+        const next = { ...prev };
+        delete next[selected.id];
+        return next;
+      });
+      setMessage("");
+      closeCandidate();
+    }
+    setRemoving(false);
+  };
+
+  if (loading) {
+    return <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center text-muted-foreground text-sm">불러오는 중...</div>;
+  }
+
+  if (!candidates.length) {
     return (
       <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center">
-        <div className="w-20 h-20 rounded-full bg-primary/15 flex items-center justify-center mx-auto mb-6">
-          <Heart className="w-9 h-9 fill-primary text-primary" />
-        </div>
-        <h3 className="text-xl font-bold mb-2">투표 완료!</h3>
-        <p className="text-muted-foreground text-sm mb-2">소중한 마음이 전달되길 바랍니다.</p>
-        <p className="text-muted-foreground text-xs mb-8">매칭 결과는 투표 마감 후 공개됩니다.</p>
-        <button onClick={() => go("vote-profile")} className="w-full py-3.5 rounded-2xl font-medium text-sm border border-primary text-primary hover:bg-primary/8 transition-colors mb-3">
-          프로필 사진 변경하기
-        </button>
-        <button onClick={() => setShowMyModal(true)} className="w-full py-3.5 rounded-2xl font-medium text-sm border border-border text-muted-foreground hover:bg-secondary/30 transition-colors mb-4">
-          내 신청서 확인하기
-        </button>
-        <button onClick={onLogout} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity">로그아웃 후 홈으로</button>
-        
-        {showMyModal && <MyApplicationModal voter={voter} onClose={() => setShowMyModal(false)} />}
+        <p className="text-muted-foreground text-sm mb-6">투표 가능한 참가자가 없습니다.</p>
+        <button onClick={onLogout} className="text-sm text-muted-foreground underline">로그아웃</button>
       </div>
     );
   }
 
+  const selectedPhoto = selected ? getProfilePhoto(selected) : null;
+
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
       <div className="flex items-center justify-between pt-6 pb-2">
-        <div className="flex items-center gap-3">
-          <button onClick={() => go("vote-profile")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <div>
-            <h2 className="text-lg font-semibold">투표</h2>
-            <p className="text-xs text-muted-foreground">{voter.nickname}님 · {selectedIds.length}/{MAX_VOTES}명 선택</p>
-          </div>
+        <div>
+          <h2 className="text-lg font-semibold">투표</h2>
+          <p className="text-xs text-muted-foreground">{voter.nickname}님 · {votedCount}/{MAX_VOTES}명 투표함</p>
         </div>
-        <button onClick={() => setShowMyModal(true)} className="flex items-center gap-1 text-xs border border-border rounded-lg px-2.5 py-1.5 text-muted-foreground hover:text-foreground">
-          <ClipboardList className="w-3.5 h-3.5" /> 내 신청서
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowMyModal(true)} className="flex items-center gap-1 text-xs border border-border rounded-lg px-2.5 py-1.5 text-muted-foreground hover:text-foreground">
+            <ClipboardList className="w-3.5 h-3.5" /> 내 신청서
+          </button>
+          <button onClick={onLogout} className="flex items-center gap-1 text-xs border border-border rounded-lg px-2.5 py-1.5 text-muted-foreground hover:text-foreground">
+            <LogOut className="w-3.5 h-3.5" /> 로그아웃
+          </button>
+        </div>
       </div>
 
-      <div className="bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 mb-5 mt-4">
-        <p className="text-sm text-primary/90">마음에 드는 분을 최대 {MAX_VOTES}명까지 선택할 수 있습니다.</p>
+      <div className="bg-primary/10 border border-primary/20 rounded-xl px-4 py-3 mb-4 mt-4">
+        <p className="text-sm text-primary/90">투표할 사람을 선택하고 쪽지를 보내주세요. 투표 마감 전까지 수정할 수 있습니다.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-2.5">
         {candidates.map((c) => {
-          const isSelected = selectedIds.includes(c.id);
           const photo = getProfilePhoto(c);
+          const voted = c.id in myVotes;
           return (
-            <button key={c.id} onClick={() => toggle(c.id)}
-              className={`rounded-2xl border overflow-hidden transition-all active:scale-[0.97] ${isSelected ? "border-primary ring-2 ring-primary/30" : "border-[rgba(240,168,190,0.30)] bg-[#131313] hover:border-primary/40"}`}>
-              <div className="aspect-[4/5] relative bg-muted">
-                {photo ? <img src={photo} alt={c.nickname} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Camera className="w-8 h-8 opacity-30" /></div>}
-                {isSelected && <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary flex items-center justify-center shadow-lg"><Heart className="w-3.5 h-3.5 fill-white text-white" /></div>}
+            <button key={c.id} onClick={() => openCandidate(c.id)}
+              className={`rounded-xl border overflow-hidden text-left transition-all active:scale-[0.97] ${voted ? "border-primary ring-1 ring-primary/30" : "border-[rgba(240,168,190,0.30)] bg-[#131313] hover:border-primary/40"}`}>
+              <div className="aspect-[3/4] relative bg-muted">
+                {photo
+                  ? <VotePhoto src={photo} alt={c.nickname} className="w-full h-full object-cover" width={200} />
+                  : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Camera className="w-5 h-5 opacity-30" /></div>}
+                {voted && (
+                  <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                    <Heart className="w-2.5 h-2.5 fill-white text-white" />
+                  </div>
+                )}
               </div>
-              <div className="p-3 text-left">
-                <p className="font-semibold text-sm">{c.nickname}</p>
-              </div>
+              <p className="text-xs font-medium px-2 py-1.5 truncate">{c.nickname}</p>
             </button>
           );
         })}
       </div>
 
-      {candidates.length === 0 && <p className="text-center text-muted-foreground text-sm py-12">투표 가능한 참가자가 없습니다.</p>}
-
-      <button onClick={handleSubmit} disabled={submitting}
-        className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
-        {submitting ? "제출 중..." : selectedIds.length === 0 ? "마음에 드는 분 없음으로 제출" : `${selectedIds.length}명 선택 완료 · 제출하기`}
-      </button>
+      {selected && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-end justify-center p-4" onClick={closeCandidate}>
+          <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="font-semibold text-sm">{selected.nickname}님에게 투표</h3>
+              <button onClick={closeCandidate} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="px-5 py-4">
+              <div className="w-1/4 min-w-[72px] max-w-[96px] mx-auto aspect-[3/4] rounded-xl overflow-hidden bg-muted mb-4">
+                {selectedPhoto
+                  ? <VotePhoto src={selectedPhoto} alt={selected.nickname} className="w-full h-full object-cover" width={200} />
+                  : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Camera className="w-6 h-6 opacity-30" /></div>}
+              </div>
+              <FormField label="쪽지" hint={`최대 ${MAX_VOTE_MESSAGE}자`}>
+                <FTextarea
+                  placeholder="마음이 전해지도록 짧은 쪽지를 남겨주세요."
+                  value={message}
+                  maxLength={MAX_VOTE_MESSAGE}
+                  onChange={(e) => { setMessage(e.target.value); setError(""); }}
+                  rows={4}
+                />
+              </FormField>
+              {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+              {atMaxVotes && <p className="text-xs text-amber-400 mt-2">투표는 최대 {MAX_VOTES}명까지 가능합니다.</p>}
+              <div className="space-y-3 mt-5">
+                <button
+                  onClick={handleSendVote}
+                  disabled={submitting || atMaxVotes}
+                  className="w-full py-3.5 rounded-xl font-semibold text-sm bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
+                  {submitting ? "전송 중..." : hasVotedSelected ? "쪽지 수정하기" : "투표 보내기"}
+                </button>
+                {hasVotedSelected && (
+                  <button
+                    onClick={handleRemoveVote}
+                    disabled={removing}
+                    className="w-full py-3 rounded-xl font-medium text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary/30 transition-colors disabled:opacity-50">
+                    {removing ? "취소 중..." : "이 사람 투표 취소"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showMyModal && <MyApplicationModal voter={voter} onClose={() => setShowMyModal(false)} />}
     </div>
@@ -1129,35 +1330,65 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   onUpdate: (a: Application) => void; sessionToken: string | null; onLogout: () => void;
 }) {
   const sb = getSupabase(sessionToken);
-  const [matches,   setMatches]   = useState<Match[]>([]);
-  const [matchApps, setMatchApps] = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
-  const [loading,   setLoading]   = useState(true);
+  const [tab,         setTab]         = useState<"received" | "matches">("received");
+  const [received,    setReceived]    = useState<ReceivedVote[]>([]);
+  const [matches,     setMatches]     = useState<Match[]>([]);
+  const [matchApps,   setMatchApps]   = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
+  const [loading,     setLoading]     = useState(true);
+  const [expandedId,  setExpandedId]  = useState<string | null>(null);
 
   useEffect(() => {
-    sb.rpc("get_my_matches").then(async ({ data: mData }) => {
-      if (!mData?.length) { setLoading(false); return; }
+    Promise.all([
+      sb.rpc("get_votes_for_me"),
+      sb.rpc("get_my_matches"),
+    ]).then(async ([votesRes, matchesRes]) => {
+      if (votesRes.data) {
+        setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
+          voterId: r.voter_id as string,
+          nickname: (r.nickname as string) || "",
+          gender: r.gender as Gender,
+          age: String(r.age ?? ""),
+          mbti: (r.mbti as string) || "",
+          job: (r.job as string) || "",
+          jobDetail: r.job_detail as string | undefined,
+          currentWork: (r.current_work as string) || "",
+          lifeGoal: (r.life_goal as string) || "",
+          hobbies: (r.alone_time as string) || "",
+          instagram: (r.instagram as string) || "",
+          idealType: (r.ideal_type as string) || "",
+          charm: (r.charm as string) || "",
+          celebrity: (r.celebrity as string) || "",
+          voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
+          photos: (r.photos as string[]) || [],
+          message: (r.message as string) || "",
+          createdAt: (r.created_at as string) || "",
+        })));
+      }
 
-      const converted: Match[] = mData.map((m: Record<string, string>) => ({
-        id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
-        calculatedAt: m.calculated_at,
-        user1Response: m.user1_response.replace("_", "-") as MatchResponse,
-        user2Response: m.user2_response.replace("_", "-") as MatchResponse,
-      }));
-      setMatches(converted);
+      const mData = matchesRes.data;
+      if (mData?.length) {
+        const converted: Match[] = mData.map((m: Record<string, string>) => ({
+          id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
+          calculatedAt: m.calculated_at,
+          user1Response: m.user1_response.replace("_", "-") as MatchResponse,
+          user2Response: m.user2_response.replace("_", "-") as MatchResponse,
+        }));
+        setMatches(converted);
 
-      const otherIds = mData.map((m: Record<string, string>) =>
-        m.user1_id === voter.id ? m.user2_id : m.user1_id
-      );
-      const { data: appsData } = await getSupabase()
-        .from("approved_for_voting")
-        .select("id, nickname, vote_profile_photo")
-        .in("id", otherIds);
-      if (appsData) {
-        const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
-        appsData.forEach((a: Record<string, string>) => {
-          map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
-        });
-        setMatchApps(map);
+        const otherIds = mData.map((m: Record<string, string>) =>
+          m.user1_id === voter.id ? m.user2_id : m.user1_id
+        );
+        const { data: appsData } = await getSupabase()
+          .from("approved_for_voting")
+          .select("id, nickname, vote_profile_photo")
+          .in("id", otherIds);
+        if (appsData) {
+          const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
+          appsData.forEach((a: Record<string, string>) => {
+            map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
+          });
+          setMatchApps(map);
+        }
       }
       setLoading(false);
     });
@@ -1169,7 +1400,7 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
     const other   = matchApps[otherId];
     const myR     = isUser1 ? m.user1Response : m.user2Response;
     const theirR  = isUser1 ? m.user2Response : m.user1Response;
-    
+
     let currentStatus: "pending" | "success" | "closed" = "pending";
     if (myR === "not-going" || theirR === "not-going") currentStatus = "closed";
     else if (myR === "going" && theirR === "going") currentStatus = "success";
@@ -1194,33 +1425,154 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
 
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
-      <div className="flex items-center justify-between pt-6 pb-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-          <div>
-            <h2 className="text-lg font-semibold">매칭 결과</h2>
-            <p className="text-xs text-muted-foreground">{voter.nickname}님</p>
-          </div>
+      <div className="flex items-center justify-between pt-6 pb-4">
+        <div>
+          <h2 className="text-lg font-semibold">투표 결과</h2>
+          <p className="text-xs text-muted-foreground">{voter.nickname}님</p>
         </div>
         <button onClick={onLogout} className="flex items-center gap-1 text-xs border border-border rounded-lg px-2.5 py-1.5 text-muted-foreground hover:text-foreground">
           <LogOut className="w-3.5 h-3.5" /> 로그아웃
         </button>
       </div>
 
+      <div className="flex gap-1 p-1 bg-secondary/30 rounded-xl mb-5">
+        <button
+          onClick={() => setTab("received")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            tab === "received" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+          }`}>
+          나에게 온 투표
+          {received.length > 0 && (
+            <span className="ml-1.5 text-xs text-primary">{received.length}</span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab("matches")}
+          className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            tab === "matches" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+          }`}>
+          매칭
+          {myMatches.length > 0 && (
+            <span className="ml-1.5 text-xs text-primary">{myMatches.length}</span>
+          )}
+        </button>
+      </div>
+
       {loading ? (
         <p className="text-center text-muted-foreground text-sm py-12">조회 중...</p>
+      ) : tab === "received" ? (
+        received.length === 0 ? (
+          <div className="text-center pt-12 pb-8">
+            <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <p className="text-lg font-semibold mb-2">아직 투표가 없습니다</p>
+            <p className="text-muted-foreground text-sm">나에게 투표한 분이 없어요.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {received.map(r => {
+              const photo = r.voteProfilePhoto || r.photos[0] || null;
+              const expanded = expandedId === r.voterId;
+              return (
+                <div key={r.voterId} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
+                  <div className="flex items-start gap-4 p-4">
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-muted shrink-0">
+                      {photo
+                        ? <VotePhoto src={photo} alt={r.nickname} className="w-full h-full object-cover" width={200} />
+                        : <div className="w-full h-full flex items-center justify-center"><Camera className="w-6 h-6 text-muted-foreground/40" /></div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold">{r.nickname}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {r.age}세 · {r.mbti} · {r.job}{r.jobDetail ? ` (${r.jobDetail})` : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="px-4 pb-3">
+                    <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                        <p className="text-xs font-medium text-primary">쪽지</p>
+                      </div>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{r.message}</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border px-4 py-3">
+                    <button
+                      onClick={() => setExpandedId(expanded ? null : r.voterId)}
+                      className="w-full flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                      {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      {expanded ? "프로필 접기" : "프로필 더보기"}
+                    </button>
+                    {expanded && (
+                      <div className="mt-3 space-y-3">
+                        {r.photos.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {r.photos.map((p, i) => (
+                              <VotePhoto key={i} src={p} alt="" className="aspect-square w-full object-cover rounded-xl" width={300} />
+                            ))}
+                          </div>
+                        )}
+                        <div className="bg-secondary/40 border border-border rounded-xl p-3 space-y-2 text-sm">
+                          <div className="flex justify-between"><span className="text-muted-foreground">성별</span><span>{r.gender}</span></div>
+                          <div className="flex justify-between"><span className="text-muted-foreground">닮은꼴</span><span>{r.celebrity || "-"}</span></div>
+                          {r.instagram && (
+                            <div className="flex justify-between"><span className="text-muted-foreground">인스타</span><span>@{r.instagram}</span></div>
+                          )}
+                        </div>
+                        {r.currentWork && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">요즘 어떤 삶을 살고 있나요?</p>
+                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.currentWork}</p>
+                          </div>
+                        )}
+                        {r.lifeGoal && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">이루고 싶은 삶</p>
+                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.lifeGoal}</p>
+                          </div>
+                        )}
+                        {r.hobbies && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">혼자 있을 때</p>
+                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.hobbies}</p>
+                          </div>
+                        )}
+                        {r.idealType && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">어떤 사람에게 끌리나요?</p>
+                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.idealType}</p>
+                          </div>
+                        )}
+                        {r.charm && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1">나의 장점</p>
+                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.charm}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : myMatches.length === 0 ? (
         <div className="text-center pt-12 pb-8">
           <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
             <Heart className="w-8 h-8 text-muted-foreground" />
           </div>
-          <p className="text-lg font-semibold mb-2">매칭 상대가 없습니다.</p>
-          <p className="text-muted-foreground text-sm">이번 인연은 아니었지만 다음 기회가 있을 거예요.</p>
+          <p className="text-lg font-semibold mb-2">매칭 상대가 없습니다</p>
+          <p className="text-muted-foreground text-sm">서로 선택한 분이 없어요.</p>
         </div>
       ) : (
         <div className="space-y-4">
           <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-2">
-            <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 프라이빗 라운지로 이동하시겠어요?</p>
+            <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 라운지에 입장하시겠어요?</p>
           </div>
           {myMatches.map(({ m, other, myR, theirR, isUser1, status }) => {
             if (!other) return null;
@@ -1229,7 +1581,7 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
               <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-muted shrink-0">
-                    {otherPhoto ? <img src={otherPhoto} alt={other.nickname} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Camera className="w-6 h-6 text-muted-foreground/40" /></div>}
+                    {otherPhoto ? <VotePhoto src={otherPhoto} alt={other.nickname} className="w-full h-full object-cover" width={200} /> : <div className="w-full h-full flex items-center justify-center"><Camera className="w-6 h-6 text-muted-foreground/40" /></div>}
                   </div>
                   <div>
                     <p className="font-semibold">{other.nickname}</p>
@@ -1254,11 +1606,11 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                     <div className="flex gap-2">
                       <button onClick={() => respond(m.id, isUser1, "going")}
                         className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                        라운지로 간다
+                        라운지 입장
                       </button>
                       <button onClick={() => respond(m.id, isUser1, "not-going")}
                         className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">
-                        가지 않는다
+                        거절
                       </button>
                     </div>
                   ) : (
@@ -1273,7 +1625,6 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
         </div>
       )}
 
-      <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold text-[15px] border border-border text-muted-foreground hover:text-foreground transition-colors mt-6">홈으로</button>
     </div>
   );
 }
@@ -1281,18 +1632,18 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
 /* ═══════════════════════════════════════════
    MY APPLICATION PAGE (Read-only view)
 ═══════════════════════════════════════════ */
-function MyApplicationPage({ voter, go }: { voter: Application; go: (v: View) => void }) {
+function MyApplicationPage({ voter, onBack }: { voter: Application; onBack: () => void }) {
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
       <div className="flex items-center gap-4 pt-6 pb-6">
-        <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+        <button onClick={onBack} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
         <div>
           <h2 className="text-lg font-semibold">내 신청서 확인</h2>
           <p className="text-xs text-muted-foreground">제출하신 정보는 수정할 수 없는 읽기 전용 상태입니다.</p>
         </div>
       </div>
       <ApplicationDetailView app={voter} />
-      <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">홈으로</button>
+      <button onClick={onBack} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">투표 화면으로</button>
     </div>
   );
 }
@@ -1337,803 +1688,6 @@ function ApplicationDetailView({ app }: { app: Application }) {
         <div><p className="text-xs text-muted-foreground mb-1">어떤 사람에게 끌리나요?</p><p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{app.idealType}</p></div>
         <div><p className="text-xs text-muted-foreground mb-1">나의 장점</p><p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{app.charm}</p></div>
       </div>
-      <div className="text-xs text-muted-foreground border-t border-border pt-3">환불 계좌: {app.refundBank} {app.refundAccount}</div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   ADMIN LOGIN
-═══════════════════════════════════════════ */
-function AdminLoginPage({ go }: { go: (v: View) => void }) {
-  const [pw, setPw] = useState("");
-  const [show, setShow] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (adminApi.hasSession()) go("admin");
-  }, []);
-
-  const login = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      await adminApi.login(pw);
-      go("admin");
-    } catch {
-      setError("비밀번호가 올바르지 않습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-md mx-auto px-4 pb-16">
-      <div className="flex items-center gap-4 pt-6 pb-10">
-        <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-        <h2 className="text-lg font-semibold">관리자 로그인</h2>
-      </div>
-      <div className="space-y-4">
-        <FormField label="비밀번호">
-          <div className="relative">
-            <FInput type={show ? "text" : "password"} placeholder="비밀번호 입력" value={pw} onChange={(e) => { setPw(e.target.value); setError(""); }} onKeyDown={(e) => e.key === "Enter" && login()} className="pr-12" />
-            <button onClick={() => setShow(!show)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">{show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
-          </div>
-          {error && <p className="text-xs text-destructive mt-1.5">{error}</p>}
-        </FormField>
-        <button onClick={login} disabled={loading} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-2 disabled:opacity-50">
-          {loading ? "확인 중..." : "로그인"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   ADMIN PAGE (routes to mobile or PC)
-═══════════════════════════════════════════ */
-function AdminPage({ go }: { go: (v: View) => void }) {
-  const isPC = useIsPC();
-  return isPC ? <PCAdminPage go={go} /> : <MobileAdminPage go={go} />;
-}
-
-/* ─── MOBILE ADMIN ─── */
-function MobileAdminPage({ go }: { go: (v: View) => void }) {
-  const [tab, setTab] = useState<AdminTab>("apps");
-  const [apps, setApps] = useState<Application[]>([]);
-  const [subs, setSubs] = useState<{ voter_id: string; voted_for_ids: string[] }[]>([]);
-  const [matches, setMatches] = useState<{
-    id: string; user1_id: string; user2_id: string;
-    calculated_at: string; user1_response: string; user2_response: string;
-  }[]>([]);
-  const [settings, setSettings] = useState<{
-    is_open: boolean; is_closed: boolean; closed_at?: string;
-    male_open: boolean; female_open: boolean;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [gFilter, setGFilter] = useState<GenderFilter>("전체");
-  const [sFilter, setSFilter] = useState<StatusFilter>("전체");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [photoModal, setPhotoModal] = useState<string[] | null>(null);
-  const [photoIdx, setPhotoIdx] = useState(0);
-  const [smsModal, setSmsModal] = useState<Application | null>(null);
-  const [closeConfirm, setCloseConfirm] = useState(false);
-
-  const refresh = async () => {
-    const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
-      adminApi.listApplicants(),
-      adminApi.getVoteResults(),
-      adminApi.getMatches(),
-      adminApi.getVoteSettings(),
-    ]);
-    setApps(appsRaw.map((a: Record<string, unknown>) => ({
-      id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
-      mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
-      currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
-      instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
-      celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
-      refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: a.sms_sent, submittedAt: a.submitted_at,
-    })) as Application[]);
-    setSubs(subsRaw);
-    setMatches(matchesRaw);
-    setSettings(settingsRaw);
-    setLoading(false);
-  };
-
-  useEffect(() => { refresh(); }, []);
-
-  const updateStatus = async (id: string, status: AppStatus) => {
-    await adminApi.updateStatus(id, status);
-    if (status === "approved") {
-      const t = apps.find(a => a.id === id);
-      if (t) setSmsModal(t);
-    }
-    refresh();
-  };
-
-  const markSmsSent = async (id: string) => {
-    await adminApi.markSmsSent(id);
-    refresh();
-  };
-
-  const toggleVoteOpen = async () => {
-    if (!settings) return;
-    await adminApi.toggleVoteOpen(!settings.is_open);
-    refresh();
-  };
-
-  const toggleGenderOpen = async (gender: Gender) => {
-    if (!settings) return;
-    const current = gender === "남성" ? settings.male_open : settings.female_open;
-    await adminApi.toggleGenderOpen(gender, !current);
-    refresh();
-  };
-
-  const closeVoting = async () => {
-    await adminApi.closeVoting();
-    setCloseConfirm(false);
-    refresh();
-  };
-
-  if (loading || !settings) {
-    return <div className="max-w-md mx-auto pb-16 px-4 pt-12 text-center text-muted-foreground text-sm">불러오는 중...</div>;
-  }
-
-  const approved = apps.filter(a => a.status === "approved");
-  const submittedCount = subs.length;
-  const statusColor: Record<AppStatus, string> = { pending: "text-amber-400 bg-amber-400/10 border-amber-400/30", approved: "text-green-400 bg-green-400/10 border-green-400/30", rejected: "text-destructive bg-destructive/10 border-destructive/30" };
-  const statusLabel: Record<AppStatus, string> = { pending: "대기", approved: "승인", rejected: "거절" };
-  const cnt = (g: GenderFilter, s: AppStatus | "all") => apps.filter(a => (g === "전체" || a.gender === g) && (s === "all" || a.status === s)).length;
-  const filteredApps = apps.filter(a => (gFilter === "전체" || a.gender === gFilter) && (sFilter === "전체" || a.status === sFilter));
-
-  const getMatchStatusFromRow = (m: { user1_response: string; user2_response: string }): "pending" | "success" | "closed" => {
-    if (m.user1_response === "not_going" || m.user2_response === "not_going") return "closed";
-    if (m.user1_response === "going" && m.user2_response === "going") return "success";
-    return "pending";
-  };
-
-  return (
-    <div className="max-w-md mx-auto pb-16">
-      <div className="px-4 pt-6 pb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">관리자 대시보드</h2>
-        <button onClick={() => { adminApi.logout(); go("home"); }} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"><LogOut className="w-3.5 h-3.5" /> 나가기</button>
-      </div>
-
-      <div className="px-4 flex gap-1.5 mb-4">
-        {([["apps", "신청 목록"], ["vote", "투표 관리"], ["matching", "매칭 현황"]] as [AdminTab, string][]).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-all ${tab === t ? "bg-primary/15 border-primary/40 text-primary" : "bg-[#131313] border-[rgba(240,168,190,0.30)] text-[#888888]"}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "apps" && (
-        <div className="px-4">
-          <div className="flex gap-2 mb-3">
-            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"]] as const).map(([k,l,c]) => (
-              <div key={k} className="flex-1 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-2 py-2.5 text-center">
-                <p className={`text-lg font-bold leading-none ${c}`}>{cnt("전체", k)}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{l}</p>
-                <p className="text-[9px] text-muted-foreground/60 mt-0.5">남{cnt("남성",k)} / 여{cnt("여성",k)}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mb-2.5">
-            {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
-          </div>
-          <div className="flex gap-2 mb-4">
-            {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
-              const lbl: Record<StatusFilter,string>={전체:"전체",pending:"대기",approved:"승인",rejected:"거절"};
-              return <button key={s} onClick={() => setSFilter(s)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{lbl[s]}</button>;
-            })}
-          </div>
-          <div className="space-y-2">
-            {!filteredApps.length && <p className="text-center text-muted-foreground text-sm py-12">신청서가 없습니다.</p>}
-            {filteredApps.map((a) => {
-              const open = expanded === a.id;
-              return (
-                <div key={a.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-                  <button onClick={() => setExpanded(open ? null : a.id)} className="w-full px-4 py-3.5 flex items-center gap-3 text-left">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{a.name}</span>
-                        <span className="text-xs text-muted-foreground">({a.nickname})</span>
-                        {a.smsSent && <MessageSquare className="w-3 h-3 text-green-400" />}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {a.age}세 · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
-                    </div>
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full border shrink-0 ${statusColor[a.status]}`}>{statusLabel[a.status]}</span>
-                    {open ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
-                  </button>
-                  {open && (
-                    <div className="border-t border-border px-4 py-4 space-y-4">
-                      {!!a.photos?.length && (
-                        <div>
-                          <div className="grid grid-cols-3 gap-2">
-                            {a.photos.map((p,i) => <button key={i} onClick={() => { setPhotoModal(a.photos); setPhotoIdx(i); }} className="aspect-square"><img src={p} alt="" className="w-full h-full object-cover rounded-lg" /></button>)}
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1.5 text-center">탭하여 크게 보기</p>
-                        </div>
-                      )}
-                      <div className="space-y-2 text-sm">
-                        {([["MBTI",a.mbti],["연락처",a.contact],["인스타그램","@"+a.instagram],["닮은꼴",a.celebrity]] as [string,string][]).map(([l,v])=>(
-                          <div key={l} className="flex justify-between gap-4"><span className="text-muted-foreground shrink-0">{l}</span><span className="text-right break-all">{v}</span></div>
-                        ))}
-                      </div>
-                      {([["요즘 삶",a.currentWork],["이루고 싶은 삶",a.lifeGoal],["혼자 있을 때",a.hobbies],["끌리는 사람",a.idealType],["나의 장점",a.charm]] as [string,string][]).map(([l,v])=>(
-                        <div key={l}><p className="text-xs text-muted-foreground mb-1">{l}</p><p className="text-sm leading-relaxed">{v}</p></div>
-                      ))}
-                      <div className="text-xs text-muted-foreground border-t border-border pt-3">환불: {a.refundBank} {a.refundAccount}</div>
-                      <div className="flex gap-2 pt-1">
-                        <button onClick={() => updateStatus(a.id,"approved")} disabled={a.status==="approved"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-40">승인</button>
-                        <button onClick={() => updateStatus(a.id,"rejected")} disabled={a.status==="rejected"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">거절</button>
-                        <button onClick={() => updateStatus(a.id,"pending")} disabled={a.status==="pending"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-40">대기</button>
-                      </div>
-                      {a.status === "approved" && (
-                        <button onClick={() => setSmsModal(a)} className={`w-full py-2.5 rounded-xl text-sm font-medium border flex items-center justify-center gap-2 transition-colors ${a.smsSent?"border-green-500/40 text-green-400":"border-primary/40 text-primary hover:bg-primary/8"}`}>
-                          <MessageSquare className="w-4 h-4" />{a.smsSent ? "SMS 발송 완료" : "SMS 발송하기"}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {tab === "vote" && (
-        <div className="px-4 space-y-4">
-          <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="font-semibold text-sm">남성 신청 접수</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{settings.male_open ? "접수 중" : "마감됨"}</p>
-              </div>
-              <button onClick={() => toggleGenderOpen("남성")}
-                className={`relative w-12 h-6 rounded-full transition-colors ${settings.male_open ? "bg-primary" : "bg-muted"}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.male_open ? "left-7" : "left-1"}`} />
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-sm">여성 신청 접수</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{settings.female_open ? "접수 중" : "마감됨"}</p>
-              </div>
-              <button onClick={() => toggleGenderOpen("여성")}
-                className={`relative w-12 h-6 rounded-full transition-colors ${settings.female_open ? "bg-primary" : "bg-muted"}`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.female_open ? "left-7" : "left-1"}`} />
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-sm">투표 오픈</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{settings.is_open ? "참가자들이 투표할 수 있습니다" : "투표가 닫혀 있습니다"}</p>
-              </div>
-              <button onClick={toggleVoteOpen} disabled={settings.is_closed}
-                className={`relative w-12 h-6 rounded-full transition-colors ${settings.is_open ? "bg-primary" : "bg-muted"} disabled:opacity-40`}>
-                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.is_open ? "left-7" : "left-1"}`} />
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 현황</p>
-            <div className="flex gap-4">
-              <div className="text-center flex-1"><p className="text-2xl font-bold text-primary">{submittedCount}</p><p className="text-xs text-muted-foreground mt-1">제출 완료</p></div>
-              <div className="w-px bg-border" />
-              <div className="text-center flex-1"><p className="text-2xl font-bold text-foreground">{approved.length}</p><p className="text-xs text-muted-foreground mt-1">총 승인 인원</p></div>
-            </div>
-          </div>
-
-          {!settings.is_closed ? (
-            <button onClick={() => setCloseConfirm(true)} disabled={!settings.is_open && submittedCount === 0}
-              className="w-full py-3.5 rounded-2xl text-sm font-semibold border border-destructive/40 text-destructive hover:bg-destructive/8 transition-colors disabled:opacity-40">
-              투표 마감 및 매칭 계산
-            </button>
-          ) : (
-            <div className="bg-muted/40 border border-border rounded-2xl p-4 text-center">
-              <p className="text-sm font-medium">투표가 마감되었습니다.</p>
-              {settings.closed_at && <p className="text-xs text-muted-foreground mt-1">{new Date(settings.closed_at).toLocaleString("ko-KR")}</p>}
-            </div>
-          )}
-
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 결과</p>
-            <div className="space-y-2">
-              {approved
-                .map(a => ({ ...a, count: subs.filter(s => s.voted_for_ids.includes(a.id)).length, voters: subs.filter(s => s.voted_for_ids.includes(a.id)).map(s => apps.find(x => x.id === s.voter_id)?.nickname || "알 수 없음") }))
-                .sort((a,b) => b.count - a.count)
-                .map((a,i) => (
-                  <div key={a.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3.5 flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${i===0?"bg-primary/20 text-primary":i===1?"bg-slate-400/20 text-slate-400":i===2?"bg-orange-600/20 text-orange-500":"bg-muted text-muted-foreground"}`}>{i+1}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{a.nickname}</p>
-                      {a.voters.length > 0 && <p className="text-xs text-muted-foreground truncate">{a.voters.join(", ")}님이 투표</p>}
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0"><Heart className="w-3.5 h-3.5 fill-primary text-primary" /><span className="font-bold text-sm text-primary">{a.count}</span></div>
-                  </div>
-                ))}
-              {!approved.length && <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === "matching" && (
-        <div className="px-4 space-y-3">
-          {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 text-center"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
-          {matches.length === 0 && settings.is_closed && <p className="text-center text-muted-foreground text-sm py-12">매칭된 쌍이 없습니다.</p>}
-          {matches.map((m) => {
-            const u1 = apps.find(a => a.id === m.user1_id);
-            const u2 = apps.find(a => a.id === m.user2_id);
-            const st = getMatchStatusFromRow(m);
-            const stLabel = { pending: "대기 중", success: "매칭 성사", closed: "종료" };
-            const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
-            return (
-              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">{u1 && getProfilePhoto(u1) ? <img src={getProfilePhoto(u1)!} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-muted" />}</div>
-                    <p className="text-xs font-medium mt-1">{u1?.nickname}</p>
-                  </div>
-                  <Heart className="w-4 h-4 fill-primary text-primary shrink-0" />
-                  <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">{u2 && getProfilePhoto(u2) ? <img src={getProfilePhoto(u2)!} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-muted" />}</div>
-                    <p className="text-xs font-medium mt-1">{u2?.nickname}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-xs border-t border-border pt-3">
-                  <span className="text-muted-foreground">응답: {m.user1_response === "going" ? "간다" : m.user1_response === "not_going" ? "안 간다" : "대기"} / {m.user2_response === "going" ? "간다" : m.user2_response === "not_going" ? "안 간다" : "대기"}</span>
-                  <span className={`font-medium ${stColor[st]}`}>{stLabel[st]}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {photoModal && (
-        <div className="fixed inset-0 bg-black/92 z-50 flex flex-col items-center justify-center p-4" onClick={() => setPhotoModal(null)}>
-          <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[75vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
-          {photoModal.length > 1 && <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>{photoModal.map((_,i)=><button key={i} onClick={()=>setPhotoIdx(i)} className={`w-2.5 h-2.5 rounded-full transition-all ${i===photoIdx?"bg-primary":"bg-white/30"}`}/>)}</div>}
-          <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center" onClick={() => setPhotoModal(null)}><X className="w-5 h-5 text-white" /></button>
-        </div>
-      )}
-
-      {smsModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => setSmsModal(null)}>
-          <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">SMS 발송</h3>
-            <p className="text-xs text-muted-foreground mb-4">{smsModal.name} ({smsModal.nickname})님에게 승인 문자를 발송합니다.</p>
-            <div className="bg-secondary rounded-xl p-4 mb-4 space-y-2 text-sm">
-              <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
-              <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span>{SMS_TEXT}</span></div>
-            </div>
-            <div className="flex gap-2">
-              <a href={`sms:${smsModal.contact}?body=${encodeURIComponent(SMS_TEXT)}`} onClick={() => { markSmsSent(smsModal.id); setSmsModal(null); }} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground text-center hover:opacity-90 transition-opacity">문자 앱 열기</a>
-              <button onClick={() => setSmsModal(null)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {closeConfirm && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setCloseConfirm(false)}>
-          <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-2">투표를 마감하시겠습니까?</h3>
-            <p className="text-sm text-muted-foreground mb-5">마감 후에는 다시 열 수 없으며, 즉시 매칭이 계산됩니다.</p>
-            <div className="flex gap-2">
-              <button onClick={closeVoting} className="flex-1 py-3 rounded-xl text-sm font-medium bg-destructive text-white hover:opacity-90 transition-opacity">마감 확인</button>
-              <button onClick={() => setCloseConfirm(false)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── PC ADMIN ─── */
-function PCAdminPage({ go }: { go: (v: View) => void }) {
-  const [section, setSection] = useState<PCSection>("applications");
-  const [apps, setApps] = useState<Application[]>([]);
-  const [subs, setSubs] = useState<{ voter_id: string; voted_for_ids: string[] }[]>([]);
-  const [matches, setMatches] = useState<{
-    id: string; user1_id: string; user2_id: string;
-    calculated_at: string; user1_response: string; user2_response: string;
-  }[]>([]);
-  const [settings, setSettings] = useState<{
-    is_open: boolean; is_closed: boolean; closed_at?: string;
-    male_open: boolean; female_open: boolean;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [gFilter, setGFilter] = useState<GenderFilter>("전체");
-  const [sFilter, setSFilter] = useState<StatusFilter>("전체");
-  const [sortBy, setSortBy] = useState<string>("submittedAt");
-  const [sortDir, setSortDir] = useState<"asc"|"desc">("desc");
-  const [selected, setSelected] = useState<Application | null>(null);
-  const [smsModal, setSmsModal] = useState<Application | null>(null);
-  const [closeConfirm, setCloseConfirm] = useState(false);
-  const [photoModal, setPhotoModal] = useState<string[] | null>(null);
-  const [photoIdx, setPhotoIdx] = useState(0);
-
-  const refresh = async () => {
-    const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
-      adminApi.listApplicants(),
-      adminApi.getVoteResults(),
-      adminApi.getMatches(),
-      adminApi.getVoteSettings(),
-    ]);
-    setApps(appsRaw.map((a: Record<string, unknown>) => ({
-      id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
-      mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
-      currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
-      instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
-      celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
-      refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: a.sms_sent, submittedAt: a.submitted_at,
-    })) as Application[]);
-    setSubs(subsRaw);
-    setMatches(matchesRaw);
-    setSettings(settingsRaw);
-    setLoading(false);
-  };
-
-  useEffect(() => { refresh(); }, []);
-
-  const updateStatus = async (id: string, status: AppStatus) => {
-    await adminApi.updateStatus(id, status);
-    if (selected?.id === id) setSelected(u => u ? { ...u, status } : u);
-    if (status === "approved") {
-      const t = apps.find(a => a.id === id);
-      if (t) setSmsModal(t);
-    }
-    refresh();
-  };
-
-  const markSmsSent = async (id: string) => {
-    await adminApi.markSmsSent(id);
-    if (selected?.id === id) setSelected(s => s ? { ...s, smsSent: true } : s);
-    refresh();
-  };
-
-  const toggleVoteOpen = async () => {
-    if (!settings) return;
-    await adminApi.toggleVoteOpen(!settings.is_open);
-    refresh();
-  };
-
-  const toggleGenderOpen = async (gender: Gender) => {
-    if (!settings) return;
-    const current = gender === "남성" ? settings.male_open : settings.female_open;
-    await adminApi.toggleGenderOpen(gender, !current);
-    refresh();
-  };
-
-  const closeVoting = async () => {
-    await adminApi.closeVoting();
-    setCloseConfirm(false);
-    refresh();
-  };
-
-  if (loading || !settings) {
-    return <div className="flex h-screen items-center justify-center text-muted-foreground text-sm">불러오는 중...</div>;
-  }
-
-  const approved = apps.filter(a => a.status === "approved");
-  const statusLabel: Record<AppStatus, string> = { pending: "대기", approved: "승인", rejected: "거절" };
-  const statusBg: Record<AppStatus, string> = { pending: "bg-amber-400/10 border-amber-400/30 text-amber-400", approved: "bg-green-400/10 border-green-400/30 text-green-400", rejected: "bg-destructive/10 border-destructive/30 text-destructive" };
-
-  const filteredApps = apps
-    .filter(a => (gFilter === "전체" || a.gender === gFilter) && (sFilter === "전체" || a.status === sFilter))
-    .sort((a, b) => {
-      const va = (a as Record<string,any>)[sortBy] || "";
-      const vb = (b as Record<string,any>)[sortBy] || "";
-      return sortDir === "asc" ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
-    });
-
-  const toggleSort = (field: string) => { if (sortBy === field) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortBy(field); setSortDir("asc"); } };
-  const SortIcon = ({ field }: { field: string }) => <span className="ml-1 text-muted-foreground/60">{sortBy === field ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>;
-
-  const getMatchStatusFromRow = (m: { user1_response: string; user2_response: string }): "pending" | "success" | "closed" => {
-    if (m.user1_response === "not_going" || m.user2_response === "not_going") return "closed";
-    if (m.user1_response === "going" && m.user2_response === "going") return "success";
-    return "pending";
-  };
-
-  const navItems: [PCSection, string][] = [["applications","신청 관리"],["vote-management","투표 관리"],["matching","매칭 현황"]];
-
-  return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      <div className="w-52 shrink-0 border-r border-border flex flex-col bg-[#131313]">
-        <div className="p-5 border-b border-border">
-          <p className="text-xs text-muted-foreground">솔로파티</p>
-          <p className="font-bold mt-0.5">관리자</p>
-        </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {navItems.map(([s, label]) => (
-            <button key={s} onClick={() => setSection(s)}
-              className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all ${section === s ? "bg-primary/15 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}>
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-border">
-          <button onClick={() => { adminApi.logout(); go("home"); }} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-            <LogOut className="w-4 h-4" /> 나가기
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {section === "applications" && (
-          <div className="flex flex-1 overflow-hidden">
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-border flex items-center justify-between">
-                <h2 className="text-base font-semibold">신청 목록 ({filteredApps.length}명)</h2>
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
-                  </div>
-                  <div className="flex gap-1.5">
-                    {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
-                      const l: Record<StatusFilter,string>={전체:"전체",pending:"대기",approved:"승인",rejected:"거절"};
-                      return <button key={s} onClick={() => setSFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{l[s]}</button>;
-                    })}
-                  </div>
-                  <button onClick={() => downloadCSV(filteredApps)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all">
-                    <Download className="w-3.5 h-3.5" /> CSV 내보내기
-                  </button>
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-[#131313] border-b border-[rgba(240,168,190,0.20)]">
-                    <tr>
-                      {([["name","이름"],["gender","성별"],["age","나이"],["nickname","닉네임"],["contact","연락처"],["job","직업"]] as [string,string][]).map(([f,l]) => (
-                        <th key={f} onClick={() => toggleSort(f)} className="text-left px-4 py-3 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground whitespace-nowrap select-none">
-                          {l}<SortIcon field={f} />
-                        </th>
-                      ))}
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">상태</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">SMS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredApps.map((a) => (
-                      <tr key={a.id} onClick={() => setSelected(a)}
-                        className={`border-b border-border cursor-pointer transition-colors hover:bg-secondary/50 ${selected?.id === a.id ? "bg-primary/8" : ""}`}>
-                        <td className="px-4 py-3 font-medium">{a.name}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.gender}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.age}세</td>
-                        <td className="px-4 py-3">{a.nickname}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.contact}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{a.job}</td>
-                        <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusBg[a.status]}`}>{statusLabel[a.status]}</span></td>
-                        <td className="px-4 py-3">{a.smsSent ? <span className="text-green-400 text-xs">발송</span> : <span className="text-muted-foreground text-xs">-</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!filteredApps.length && <p className="text-center text-muted-foreground text-sm py-12">신청서가 없습니다.</p>}
-              </div>
-            </div>
-
-            {selected && (
-              <div className="w-80 border-l border-border flex flex-col overflow-hidden shrink-0">
-                <div className="flex items-center justify-between p-4 border-b border-border">
-                  <h3 className="font-semibold text-sm">{selected.name}</h3>
-                  <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
-                  {!!selected.photos?.length && (
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {selected.photos.map((p,i) => <button key={i} onClick={() => { setPhotoModal(selected.photos); setPhotoIdx(i); }} className="aspect-square"><img src={p} alt="" className="w-full h-full object-cover rounded-lg" /></button>)}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {([["성별",selected.gender],["나이",selected.age+"세"],["MBTI",selected.mbti],["닉네임",selected.nickname],["연락처",selected.contact],["인스타",`@${selected.instagram}`],["닮은꼴",selected.celebrity]] as [string,string][]).map(([l,v])=>(
-                      <div key={l} className="flex justify-between gap-3"><span className="text-muted-foreground shrink-0">{l}</span><span className="text-right break-all">{v}</span></div>
-                    ))}
-                  </div>
-                  {([["요즘 삶",selected.currentWork],["이루고 싶은 삶",selected.lifeGoal],["혼자 있을 때",selected.hobbies],["끌리는 사람",selected.idealType],["나의 장점",selected.charm]] as [string,string][]).map(([l,v])=>(
-                    <div key={l}><p className="text-xs text-muted-foreground mb-1">{l}</p><p className="text-xs leading-relaxed">{v}</p></div>
-                  ))}
-                  <p className="text-xs text-muted-foreground">환불: {selected.refundBank} {selected.refundAccount}</p>
-                </div>
-                <div className="p-4 border-t border-border space-y-2">
-                  <div className="flex gap-2">
-                    <button onClick={() => updateStatus(selected.id,"approved")} disabled={selected.status==="approved"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 disabled:opacity-40">승인</button>
-                    <button onClick={() => updateStatus(selected.id,"rejected")} disabled={selected.status==="rejected"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-40">거절</button>
-                    <button onClick={() => updateStatus(selected.id,"pending")} disabled={selected.status==="pending"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 disabled:opacity-40">대기</button>
-                  </div>
-                  {selected.status === "approved" && (
-                    <button onClick={() => setSmsModal(selected)} className={`w-full py-2 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 ${selected.smsSent?"border-green-500/40 text-green-400":"border-primary/40 text-primary hover:bg-primary/8"}`}>
-                      <MessageSquare className="w-3.5 h-3.5" />{selected.smsSent?"SMS 완료":"SMS 발송"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {section === "vote-management" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-base font-semibold mb-5">투표 관리</h2>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-sm">남성 신청 접수</p>
-                  <button onClick={() => toggleGenderOpen("남성")}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${settings.male_open ? "bg-primary" : "bg-muted"}`}>
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.male_open ? "left-7" : "left-1"}`} />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{settings.male_open ? "접수 중" : "마감됨"}</p>
-              </div>
-              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-sm">여성 신청 접수</p>
-                  <button onClick={() => toggleGenderOpen("여성")}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${settings.female_open ? "bg-primary" : "bg-muted"}`}>
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.female_open ? "left-7" : "left-1"}`} />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{settings.female_open ? "접수 중" : "마감됨"}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="font-medium text-sm">투표 오픈</p>
-                  <button onClick={toggleVoteOpen} disabled={settings.is_closed}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${settings.is_open?"bg-primary":"bg-muted"} disabled:opacity-40`}>
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.is_open?"left-7":"left-1"}`} />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">{settings.is_closed ? "투표 마감됨" : settings.is_open ? "투표 진행 중" : "투표 대기 중"}</p>
-              </div>
-              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <p className="text-2xl font-bold text-primary">{subs.length} <span className="text-sm font-normal text-muted-foreground">/ {approved.length}</span></p>
-                <p className="text-xs text-muted-foreground mt-1">투표 제출 현황</p>
-              </div>
-              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <p className="text-2xl font-bold text-primary">{matches.length}</p>
-                <p className="text-xs text-muted-foreground mt-1">매칭 쌍</p>
-              </div>
-            </div>
-
-            {!settings.is_closed ? (
-              <button onClick={() => setCloseConfirm(true)} className="mb-6 px-5 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/8 transition-colors">
-                투표 마감 및 매칭 계산
-              </button>
-            ) : (
-              <div className="mb-6 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-muted/40 border border-border text-sm text-muted-foreground">
-                투표 마감 완료 {settings.closed_at && `· ${new Date(settings.closed_at).toLocaleString("ko-KR")}`}
-              </div>
-            )}
-
-            <h3 className="text-sm font-semibold mb-3">투표 결과</h3>
-            <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">순위</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">닉네임</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">성별</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">득표수</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">투표자</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {approved.map(a => ({ ...a, count: subs.filter(s => s.voted_for_ids.includes(a.id)).length, voters: subs.filter(s => s.voted_for_ids.includes(a.id)).map(s => apps.find(x => x.id === s.voter_id)?.nickname || "?") }))
-                    .sort((a,b) => b.count - a.count)
-                    .map((a,i) => (
-                      <tr key={a.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3 font-medium text-muted-foreground">{i+1}</td>
-                        <td className="px-4 py-3 font-medium">{a.nickname}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.gender}</td>
-                        <td className="px-4 py-3"><span className="text-primary font-semibold">{a.count}</span></td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{a.voters.join(", ") || "-"}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-              {!approved.length && <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>}
-            </div>
-          </div>
-        )}
-
-        {section === "matching" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-base font-semibold mb-5">매칭 현황 ({matches.length}쌍)</h2>
-            {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
-            <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">참가자 1</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">참가자 2</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">응답 1</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">응답 2</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">상태</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">계산 시각</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map(m => {
-                    const u1 = apps.find(a => a.id === m.user1_id);
-                    const u2 = apps.find(a => a.id === m.user2_id);
-                    const st = getMatchStatusFromRow(m);
-                    const rLabel: Record<string,string> = { pending: "-", going: "간다", not_going: "안 간다" };
-                    const stEl = { pending: <span className="text-amber-400 text-xs font-medium">대기 중</span>, success: <span className="text-green-400 text-xs font-medium">매칭 성사</span>, closed: <span className="text-muted-foreground text-xs">종료</span> };
-                    return (
-                      <tr key={m.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3">{u1?.nickname || "-"}</td>
-                        <td className="px-4 py-3">{u2?.nickname || "-"}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{rLabel[m.user1_response]}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{rLabel[m.user2_response]}</td>
-                        <td className="px-4 py-3">{stEl[st]}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(m.calculated_at).toLocaleString("ko-KR")}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {!matches.length && <p className="text-center text-muted-foreground text-sm py-8">매칭 데이터가 없습니다.</p>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {photoModal && (
-        <div className="fixed inset-0 bg-black/92 z-50 flex flex-col items-center justify-center p-4" onClick={() => setPhotoModal(null)}>
-          <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[80vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
-          {photoModal.length > 1 && <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>{photoModal.map((_,i)=><button key={i} onClick={()=>setPhotoIdx(i)} className={`w-2.5 h-2.5 rounded-full ${i===photoIdx?"bg-primary":"bg-white/30"}`}/>)}</div>}
-          <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center" onClick={() => setPhotoModal(null)}><X className="w-5 h-5 text-white" /></button>
-        </div>
-      )}
-
-      {smsModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setSmsModal(null)}>
-          <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">SMS 발송</h3>
-            <p className="text-xs text-muted-foreground mb-4">{smsModal.name} ({smsModal.nickname})님에게 발송합니다.</p>
-            <div className="bg-secondary rounded-xl p-4 mb-4 space-y-2 text-sm">
-              <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
-              <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span>{SMS_TEXT}</span></div>
-            </div>
-            <div className="flex gap-2">
-              <a href={`sms:${smsModal.contact}?body=${encodeURIComponent(SMS_TEXT)}`} onClick={() => { markSmsSent(smsModal.id); setSmsModal(null); }} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground text-center hover:opacity-90">문자 앱 열기</a>
-              <button onClick={() => setSmsModal(null)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground">닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {closeConfirm && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setCloseConfirm(false)}>
-          <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-2">투표를 마감하시겠습니까?</h3>
-            <p className="text-sm text-muted-foreground mb-5">마감 후에는 다시 열 수 없으며, 즉시 매칭이 계산됩니다.</p>
-            <div className="flex gap-2">
-              <button onClick={closeVoting} className="flex-1 py-3 rounded-xl text-sm font-medium bg-destructive text-white hover:opacity-90">마감 확인</button>
-              <button onClick={() => setCloseConfirm(false)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

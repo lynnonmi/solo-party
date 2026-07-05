@@ -1,11 +1,28 @@
+# 솔로파티
 
-  # 모바일 웹사이트 제작
+참가자용 웹앱(루트)과 관리자 페이지(`admin/`)가 한 저장소에 있습니다.
 
-  This is a code bundle for 모바일 웹사이트 제작. The original project is available at https://www.figma.com/design/MXFt0o8Ppy0EPxHM3hhSm8/%EB%AA%A8%EB%B0%94%EC%9D%BC-%EC%9B%B9%EC%82%AC%EC%9D%B4%ED%8A%B8-%EC%A0%9C%EC%9E%91.
+## 참가자 사이트
 
-  ## Running the code
+```bash
+npm i
+npm run dev
+```
 
-  Run `npm i` to install the dependencies.
+http://localhost:5173
 
-  Run `npm run dev` to start the development server.
-  
+## 관리자 사이트
+
+```bash
+cd admin
+npm i
+npm run dev
+```
+
+http://localhost:5174
+
+구글 시트 연동: `admin/google-sheets/AppsScript.js` 참고
+
+## Supabase
+
+SQL 마이그레이션: `supabase/migrations/`
