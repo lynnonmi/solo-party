@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  ChevronDown, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Trash2, X,
+  ChevronDown, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Banknote, Trash2, X,
 } from "lucide-react";
 import { adminApi } from "./adminApi";
 import { FormField, FInput } from "./ui";
@@ -107,9 +107,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [photoModal, setPhotoModal] = useState<string[] | null>(null);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [smsModal, setSmsModal] = useState<Application | null>(null);
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState("");
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [depositError, setDepositError] = useState("");
+  const [depositToggling, setDepositToggling] = useState(false);
 
   const refresh = async () => {
     const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
@@ -125,7 +129,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
       celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
       refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: a.sms_sent, submittedAt: a.submitted_at,
+      status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
+      depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
     })) as Application[]);
     setSubs(subsRaw);
     setMatches(matchesRaw);
@@ -144,9 +149,37 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     refresh();
   };
 
+  const toggleDeposit = async (id: string, confirmed: boolean) => {
+    setDepositToggling(true);
+    setDepositError("");
+    try {
+      await adminApi.toggleDepositConfirmed(id, confirmed);
+      await refresh();
+    } catch (e) {
+      setDepositError(e instanceof Error ? e.message : "입금 확인 저장에 실패했습니다.");
+    } finally {
+      setDepositToggling(false);
+    }
+  };
+
   const markSmsSent = async (id: string) => {
     await adminApi.markSmsSent(id);
     refresh();
+  };
+
+  const sendSms = async () => {
+    if (!smsModal) return;
+    setSmsSending(true);
+    setSmsError("");
+    try {
+      await adminApi.sendSms(smsModal.id, SMS_TEXT);
+      setSmsModal(null);
+      refresh();
+    } catch (e) {
+      setSmsError(e instanceof Error ? e.message : "문자 전송에 실패했습니다.");
+    } finally {
+      setSmsSending(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -250,6 +283,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                         <span className="font-medium text-sm">{a.name}</span>
                         <span className="text-xs text-muted-foreground">({a.nickname})</span>
                         {a.smsSent && <MessageSquare className="w-3 h-3 text-green-400" />}
+                        {a.depositConfirmed && <Banknote className="w-3 h-3 text-green-400" />}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {a.age}세 · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
                     </div>
@@ -274,7 +308,23 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                       {([["요즘 삶",a.currentWork],["이루고 싶은 삶",a.lifeGoal],["혼자 있을 때",a.hobbies],["끌리는 사람",a.idealType],["나의 장점",a.charm]] as [string,string][]).map(([l,v])=>(
                         <div key={l}><p className="text-xs text-muted-foreground mb-1">{l}</p><p className="text-sm leading-relaxed">{v}</p></div>
                       ))}
-                      <div className="text-xs text-muted-foreground border-t border-border pt-3">환불: {a.refundBank} {a.refundAccount}</div>
+                      <div className="text-xs text-muted-foreground border-t border-border pt-3 space-y-1">
+                        <p>환불: {a.refundBank} {a.refundAccount}</p>
+                        <p>입금 신청: {a.feeConfirmed ? "예 (신청자 체크)" : "아니오"}</p>
+                        <p>입금 확인: {a.depositConfirmed ? "확인됨" : "미확인"}</p>
+                      </div>
+                      {depositError && <p className="text-xs text-destructive">{depositError}</p>}
+                      <button
+                        onClick={() => toggleDeposit(a.id, !a.depositConfirmed)}
+                        disabled={depositToggling}
+                        className={`w-full py-2.5 rounded-xl text-sm font-medium border flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${
+                          a.depositConfirmed
+                            ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
+                            : "border-primary/40 text-primary hover:bg-primary/8"
+                        }`}>
+                        <Banknote className="w-4 h-4" />
+                        {depositToggling ? "저장 중..." : a.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
+                      </button>
                       <div className="flex gap-2 pt-1">
                         <button onClick={() => updateStatus(a.id,"approved")} disabled={a.status==="approved"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-40">승인</button>
                         <button onClick={() => updateStatus(a.id,"rejected")} disabled={a.status==="rejected"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">거절</button>
@@ -436,9 +486,12 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span>{SMS_TEXT}</span></div>
             </div>
+            {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
             <div className="flex gap-2">
-              <a href={`sms:${smsModal.contact}?body=${encodeURIComponent(SMS_TEXT)}`} onClick={() => { markSmsSent(smsModal.id); setSmsModal(null); }} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground text-center hover:opacity-90 transition-opacity">문자 앱 열기</a>
-              <button onClick={() => setSmsModal(null)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">닫기</button>
+              <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
+                {smsSending ? "전송 중..." : "문자 전송"}
+              </button>
+              <button onClick={() => { setSmsModal(null); setSmsError(""); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">닫기</button>
             </div>
           </div>
         </div>
@@ -486,9 +539,13 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [sortDir, setSortDir] = useState<"asc"|"desc">("desc");
   const [selected, setSelected] = useState<Application | null>(null);
   const [smsModal, setSmsModal] = useState<Application | null>(null);
+  const [smsSending, setSmsSending] = useState(false);
+  const [smsError, setSmsError] = useState("");
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [depositError, setDepositError] = useState("");
+  const [depositToggling, setDepositToggling] = useState(false);
   const [photoModal, setPhotoModal] = useState<string[] | null>(null);
   const [photoIdx, setPhotoIdx] = useState(0);
 
@@ -506,7 +563,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
       celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
       refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: a.sms_sent, submittedAt: a.submitted_at,
+      status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
+      depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
     })) as Application[]);
     setSubs(subsRaw);
     setMatches(matchesRaw);
@@ -526,10 +584,40 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     refresh();
   };
 
+  const toggleDeposit = async (id: string, confirmed: boolean) => {
+    setDepositToggling(true);
+    setDepositError("");
+    try {
+      await adminApi.toggleDepositConfirmed(id, confirmed);
+      if (selected?.id === id) setSelected(s => s ? { ...s, depositConfirmed: confirmed } : s);
+      await refresh();
+    } catch (e) {
+      setDepositError(e instanceof Error ? e.message : "입금 확인 저장에 실패했습니다.");
+    } finally {
+      setDepositToggling(false);
+    }
+  };
+
   const markSmsSent = async (id: string) => {
     await adminApi.markSmsSent(id);
     if (selected?.id === id) setSelected(s => s ? { ...s, smsSent: true } : s);
     refresh();
+  };
+
+  const sendSms = async () => {
+    if (!smsModal) return;
+    setSmsSending(true);
+    setSmsError("");
+    try {
+      await adminApi.sendSms(smsModal.id, SMS_TEXT);
+      if (selected?.id === smsModal.id) setSelected(s => s ? { ...s, smsSent: true } : s);
+      setSmsModal(null);
+      refresh();
+    } catch (e) {
+      setSmsError(e instanceof Error ? e.message : "문자 전송에 실패했습니다.");
+    } finally {
+      setSmsSending(false);
+    }
   };
 
   const confirmDelete = async () => {
@@ -645,6 +733,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         </th>
                       ))}
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">상태</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">입금</th>
                       <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground whitespace-nowrap">SMS</th>
                     </tr>
                   </thead>
@@ -659,6 +748,11 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         <td className="px-4 py-3 text-muted-foreground">{a.contact}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{a.job}</td>
                         <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusBg[a.status]}`}>{statusLabel[a.status]}</span></td>
+                        <td className="px-4 py-3">
+                          {a.depositConfirmed
+                            ? <span className="text-green-400 text-xs font-medium">확인</span>
+                            : <span className="text-amber-400 text-xs">{a.feeConfirmed ? "신청" : "미확인"}</span>}
+                        </td>
                         <td className="px-4 py-3">{a.smsSent ? <span className="text-green-400 text-xs">발송</span> : <span className="text-muted-foreground text-xs">-</span>}</td>
                       </tr>
                     ))}
@@ -689,8 +783,32 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     <div key={l}><p className="text-xs text-muted-foreground mb-1">{l}</p><p className="text-xs leading-relaxed">{v}</p></div>
                   ))}
                   <p className="text-xs text-muted-foreground">환불: {selected.refundBank} {selected.refundAccount}</p>
+                  <div className="text-xs space-y-1 border-t border-border pt-3">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">입금 신청</span>
+                      <span>{selected.feeConfirmed ? "예" : "아니오"}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-muted-foreground">입금 확인</span>
+                      <span className={selected.depositConfirmed ? "text-green-400" : "text-amber-400"}>
+                        {selected.depositConfirmed ? "확인됨" : "미확인"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="p-4 border-t border-border space-y-2">
+                  {depositError && <p className="text-xs text-destructive">{depositError}</p>}
+                  <button
+                    onClick={() => toggleDeposit(selected.id, !selected.depositConfirmed)}
+                    disabled={depositToggling}
+                    className={`w-full py-2 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                      selected.depositConfirmed
+                        ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
+                        : "border-primary/40 text-primary hover:bg-primary/8"
+                    }`}>
+                    <Banknote className="w-3.5 h-3.5" />
+                    {depositToggling ? "저장 중..." : selected.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
+                  </button>
                   <div className="flex gap-2">
                     <button onClick={() => updateStatus(selected.id,"approved")} disabled={selected.status==="approved"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 disabled:opacity-40">승인</button>
                     <button onClick={() => updateStatus(selected.id,"rejected")} disabled={selected.status==="rejected"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-40">거절</button>
@@ -860,9 +978,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span>{SMS_TEXT}</span></div>
             </div>
+            {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
             <div className="flex gap-2">
-              <a href={`sms:${smsModal.contact}?body=${encodeURIComponent(SMS_TEXT)}`} onClick={() => { markSmsSent(smsModal.id); setSmsModal(null); }} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground text-center hover:opacity-90">문자 앱 열기</a>
-              <button onClick={() => setSmsModal(null)} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground">닫기</button>
+              <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {smsSending ? "전송 중..." : "문자 전송"}
+              </button>
+              <button onClick={() => { setSmsModal(null); setSmsError(""); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">닫기</button>
             </div>
           </div>
         </div>

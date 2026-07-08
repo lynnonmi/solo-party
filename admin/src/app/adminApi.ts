@@ -46,6 +46,8 @@ const toSnake = (a: Record<string, unknown>) => ({
   refund_account: a.refund_account ?? null,
   status: a.status,
   sms_sent: a.sms_sent ?? false,
+  fee_confirmed: a.fee_confirmed ?? false,
+  deposit_confirmed: a.deposit_confirmed ?? false,
   submitted_at: a.submitted_at ?? null,
 });
 
@@ -95,6 +97,41 @@ export const adminApi = {
   async markSmsSent(id: string): Promise<void> {
     const { error } = await getClient().rpc("admin_mark_sms_sent", { p_id: id });
     if (error) throw error;
+  },
+
+  async toggleDepositConfirmed(id: string, confirmed: boolean): Promise<void> {
+    const { error } = await getClient().rpc("admin_toggle_deposit_confirmed", {
+      p_id: id,
+      p_confirmed: confirmed,
+    });
+    if (error) {
+      if (error.message?.includes("unauthorized")) {
+        throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+      if (error.code === "PGRST202" || error.message?.includes("Could not find the function")) {
+        throw new Error("DB에 입금 확인 함수가 없습니다. Supabase에서 012_deposit_confirmed.sql을 실행해 주세요.");
+      }
+      throw new Error(error.message || "입금 확인 저장에 실패했습니다.");
+    }
+  },
+
+  async sendSms(applicantId: string, text?: string): Promise<void> {
+    const token = typeof window !== "undefined" ? localStorage.getItem(ADMIN_TOKEN_KEY) : null;
+    const { data, error } = await getClient().functions.invoke("send-sms", {
+      body: { applicant_id: applicantId, text },
+      headers: token ? { "x-admin-token": token } : {},
+    });
+
+    if (error) {
+      if (error.message?.includes("Failed to send a request to the Edge Function")) {
+        throw new Error("SMS 기능이 아직 배포되지 않았습니다. Supabase에서 send-sms 함수를 배포해 주세요.");
+      }
+      throw new Error(error.message || "문자 전송에 실패했습니다.");
+    }
+
+    const result = data as { ok?: boolean; error?: string } | null;
+    if (result?.error) throw new Error(result.error);
+    if (!result?.ok) throw new Error("문자 전송에 실패했습니다.");
   },
 
   async deleteApplicant(id: string): Promise<void> {

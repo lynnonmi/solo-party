@@ -64,6 +64,22 @@ function voteRpcErrorMessage(msg: string | undefined, fallback: string): string 
   return fallback;
 }
 
+function CsFooter({ className = "" }: { className?: string }) {
+  return (
+    <div className={`text-center pt-6 ${className}`}>
+      <p className="text-xs text-muted-foreground mb-2">궁금한 점이 있으신가요?</p>
+      <a
+        href={CS_OPEN_CHAT_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center justify-center gap-1.5 text-sm text-primary hover:opacity-80 transition-opacity underline underline-offset-4">
+        <MessageSquare className="w-3.5 h-3.5" />
+        카카오 오픈채팅 고객센터
+      </a>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════ */
@@ -160,6 +176,7 @@ const AGE_LIST  = Array.from({ length: 10 }, (_, i) => ({ age: 20 + i, birth: 20
 const PHASE2_START = new Date("2026-08-02T12:00:00+09:00");
 const PHASE1_START = new Date("2026-07-19T18:00:00+09:00");
 const EVENT_START  = new Date("2026-08-09T17:00:00+09:00");
+const CS_OPEN_CHAT_URL = "https://open.kakao.com/o/s9r5ORCi";
 const now_         = new Date();
 const currentPrice = () => now_ >= PHASE2_START ? "45,000원" : "43,000원";
 
@@ -443,16 +460,22 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
       <button
         onClick={firstAction}
         disabled={firstDisabled}
-        className="w-full py-4 rounded-2xl font-bold text-[15px] bg-[#F0A8BE] text-[#080808] transition-opacity hover:opacity-90 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed">
+        className={`w-full py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed ${
+          voteRunning
+            ? "bg-[#080808] border-[1.5px] border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)]"
+            : "bg-[#F0A8BE] text-[#080808] hover:opacity-90"
+        }`}>
         {firstLabel}
       </button>
       <button
         onClick={() => voteActive && onVote()}
         disabled={!voteActive}
-        className={`w-full py-4 rounded-2xl font-bold text-[15px] border-[1.5px] transition-all active:scale-[0.98] ${
-          voteActive
-            ? "bg-transparent border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)] cursor-pointer"
-            : "bg-[#1A1A1A] border-[rgba(240,168,190,0.35)] text-[#888888] cursor-not-allowed"
+        className={`w-full py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-[0.98] ${
+          voteRunning
+            ? "bg-[#F0A8BE] text-[#080808] hover:opacity-90 cursor-pointer"
+            : voteActive
+              ? "bg-transparent border-[1.5px] border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)] cursor-pointer"
+              : "bg-[#1A1A1A] border-[1.5px] border-[rgba(240,168,190,0.35)] text-[#888888] cursor-not-allowed"
         }`}>
         {voteText}
       </button>
@@ -470,6 +493,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
           />
         </div>
         {buttons}
+        <CsFooter />
       </div>
     );
   }
@@ -560,6 +584,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
         </div>
 
         {buttons}
+        <CsFooter className="pb-4" />
       </div>
     </div>
   );
@@ -681,6 +706,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         celebrity: form.celebrity!.trim(), photos: uploadedUrls,
         refund_bank: form.refundBank!.trim(), refund_account: form.refundAccount!.trim(),
         status: "pending",
+        fee_confirmed: !!(form as Record<string, unknown>).feeConfirmed,
       });
       if (insertErr) throw insertErr;
       go("success");
@@ -898,7 +924,12 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
                   <p>신청 완료 후 승인이 되면 문자로 안내 사항이 발송됩니다.</p>
                   <p>발송은 24시간 이내로 예정되어 있습니다.</p>
                   <p>원활한 운영을 위해 신청 내용을 검토하는 시간이 필요합니다.</p>
-                  <p>24시간 이후에도 안내 문자가 오지 않는 경우 CS로 문의해주세요.</p>
+                  <p>24시간 이후에도 안내 문자가 오지 않는 경우{" "}
+                    <a href={CS_OPEN_CHAT_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2 hover:opacity-80">
+                      고객센터
+                    </a>
+                    로 문의해주세요.
+                  </p>
                 </div>
               </section>
             </div>
@@ -931,6 +962,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
           {loading ? "처리 중..." : step === TOTAL ? "신청 완료" : "다음 단계"}
         </button>
       </div>
+      <CsFooter className="pb-4" />
 
       {privacyOpen && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-end justify-center p-4" onClick={() => setPrivacyOpen(false)}>
@@ -992,6 +1024,7 @@ function SuccessPage({ go }: { go: (v: View) => void }) {
         </div>
       </div>
       <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity">홈으로</button>
+      <CsFooter />
     </div>
   );
 }
@@ -1085,6 +1118,7 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
           {loading ? "확인 중..." : settings.isClosed ? "결과 확인하기" : "입장하기"}
         </button>
       </div>
+      <CsFooter className="pb-8" />
     </div>
   );
 }
@@ -1168,6 +1202,7 @@ function VoteProfilePage({ voter, go, onUpdate, sessionToken, onLogout }: {
         className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
         {saving ? "저장 중..." : "이 사진으로 투표 시작하기"}
       </button>
+      <CsFooter />
     </div>
   );
 }
@@ -1377,6 +1412,7 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       )}
 
       {showMyModal && <MyApplicationModal voter={voter} onClose={() => setShowMyModal(false)} />}
+      <CsFooter />
     </div>
   );
 }
@@ -1684,6 +1720,7 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
         </div>
       )}
 
+      <CsFooter />
     </div>
   );
 }

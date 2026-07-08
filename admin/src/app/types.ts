@@ -28,5 +28,7 @@ export interface Application {
   refundAccount: string;
   status: AppStatus;
   smsSent?: boolean;
+  feeConfirmed?: boolean;
+  depositConfirmed?: boolean;
   submittedAt: string;
 }

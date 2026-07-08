@@ -177,6 +177,9 @@ async function main() {
     console.log(`\n✨ ${count}개 마이그레이션 적용 완료.`);
   }
 
+  await sql`NOTIFY pgrst, 'reload schema'`;
+  console.log("🔄 API 스키마 캐시 새로고침 완료");
+
   await sql.end();
 }
 
