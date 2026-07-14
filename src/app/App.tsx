@@ -24,7 +24,7 @@ const SB_URL = (() => {
 const SB_ANON = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "")
   .trim()
   .replace(/^["']|["']$/g, "");
-const SB_READY = /^https:\/\//i.test(SB_URL);
+const SB_READY = /^https:\/\//i.test(SB_URL) && !!SB_ANON;
 
 const _sbCache: Record<string, ReturnType<typeof createClient>> = {};
 
@@ -187,8 +187,8 @@ const PHASE2_START = new Date("2026-08-02T12:00:00+09:00");
 const PHASE1_START = new Date("2026-07-19T18:00:00+09:00");
 const EVENT_START  = new Date("2026-08-09T17:00:00+09:00");
 const CS_OPEN_CHAT_URL = "https://open.kakao.com/o/s9r5ORCi";
-const now_         = new Date();
-const currentPrice = () => now_ >= PHASE2_START ? "45,000원" : "43,000원";
+const now_         = () => new Date();
+const currentPrice = () => now_() >= PHASE2_START ? "45,000원" : "43,000원";
 
 /* ═══════════════════════════════════════════
    UTILITIES

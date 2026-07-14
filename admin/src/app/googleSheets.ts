@@ -158,7 +158,7 @@ export async function syncApplicationsToGoogleSheets(
       });
       return {
         ok: true,
-        message: `${apps.length}명 데이터를 전송했습니다. 구글 시트에서 「신청자」 탭을 새로고침(F5)해 확인해 주세요.`,
+        message: `${apps.length}명 데이터 전송을 시도했습니다. 응답을 확인할 수 없어 성공 여부는 확실하지 않습니다. 구글 시트 「신청자」 탭을 새로고침(F5)해 직접 확인해 주세요.`,
         openUrl,
       };
     } catch (e) {
