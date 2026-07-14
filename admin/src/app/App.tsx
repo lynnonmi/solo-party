@@ -41,16 +41,23 @@ function AdminLoginPage({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError("");
     try {
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        throw new Error("missing_env");
+      }
       await adminApi.login(pw);
       onLogin();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      if (msg === "db_not_setup") {
+      if (msg === "missing_env") {
+        setError("Supabase 설정이 없습니다. Vercel Environment Variables에 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 넣고 Redeploy 해 주세요.");
+      } else if (msg === "db_not_setup") {
         setError("Supabase DB가 아직 설정되지 않았습니다. SQL Editor에서 초기 스키마를 실행해 주세요.");
       } else if (msg === "db_fix_needed") {
         setError("DB 보안 설정을 한 번 더 실행해 주세요. (002_fix_pgcrypto.sql)");
-      } else {
+      } else if (msg === "wrong password") {
         setError("비밀번호가 올바르지 않습니다.");
+      } else {
+        setError(msg || "로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.");
       }
     } finally {
       setLoading(false);
