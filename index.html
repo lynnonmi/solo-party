@@ -4,7 +4,10 @@
     <head>
       
       <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+      />
       <title>the second solo party</title>
       <meta name="description" content="Facilitates event participation by managing applications and exclusive voting access while providing admins with organized data and voting results." />
       <meta name="robots" content="noindex, nofollow" />
@@ -15,6 +18,12 @@
           background: #080808;
           color: #F5F0F2;
           color-scheme: dark;
+        }
+        /* iOS Safari: 입력 포커스 시 자동 확대 방지 (16px 미만이면 확대됨) */
+        input,
+        textarea,
+        select {
+          font-size: 16px !important;
         }
       </style>
       

@@ -1873,15 +1873,36 @@ function FormField({ label, hint, required, error, children }: { label: string; 
   );
 }
 
-function FInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  // text-base(16px): iOS Safari가 입력창 포커스 시 자동 확대하는 것 방지
-  return <input { ...props} className={`w-full px-4 py-3 rounded-xl bg-secondary border border-border text-base text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors ${className}`} />;
+function FInput({ className = "", style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  // 16px 고정: iOS Safari 포커스 확대 방지
+  return (
+    <input
+      {...props}
+      style={{ fontSize: 16, ...style }}
+      className={`w-full px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors ${className}`}
+    />
+  );
 }
 
-function FTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea { ...props} rows={3} className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-base text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors resize-none" />;
+function FTextarea({ style, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      rows={3}
+      style={{ fontSize: 16, ...style }}
+      className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors resize-none"
+    />
+  );
 }
 
-function FSelect({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select { ...props} className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-base text-foreground outline-none focus:border-primary transition-colors appearance-none">{children}</select>;
+function FSelect({ children, style, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      style={{ fontSize: 16, ...style }}
+      className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-foreground outline-none focus:border-primary transition-colors appearance-none"
+    >
+      {children}
+    </select>
+  );
 }
