@@ -12,8 +12,14 @@ import posterImage from "@/imports/Group_5.png";
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT
 ═══════════════════════════════════════════ */
-const SB_URL  = (import.meta.env.VITE_SUPABASE_URL  as string) ?? "";
-const SB_ANON = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "";
+const SB_URL = ((import.meta.env.VITE_SUPABASE_URL as string) ?? "")
+  .trim()
+  .replace(/^["']|["']$/g, "")
+  .replace(/\/$/, "")
+  .replace(/\/rest\/v1$/i, "");
+const SB_ANON = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "")
+  .trim()
+  .replace(/^["']|["']$/g, "");
 const SB_READY = SB_URL.startsWith("https://");
 
 const _sbCache: Record<string, ReturnType<typeof createClient>> = {};
@@ -810,13 +816,13 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
             <p className="text-sm text-primary/90 leading-relaxed">이번 행사에 함께할 분들을 더 잘 알아가기 위해 몇 가지 질문을 준비했습니다. 정답은 없으니 편하고 솔직하게 작성해주세요.</p>
           </div>
           <FormField label="요즘 어떤 삶을 살고 있나요?" hint="공부, 일, 대외활동, 취미 등" required error={errors.currentWork}>
-            <FTextarea placeholder="예: 기획 중이고 수영을 배우고 있어요." value={form.currentWork || ""} onChange={(e) => set("currentWork", e.target.value)} />
+            <FTextarea placeholder="경영학을 전공하는 대학생이고, 마케팅 분야 인턴을 준비하며 포트폴리오를 만들고 있어요. 평소에는 운동도 꾸준히 하고 주말에는 친구들과 맛집이나 전시를 자주 다닙니다." value={form.currentWork || ""} onChange={(e) => set("currentWork", e.target.value)} />
           </FormField>
           <FormField label="이루고 싶은 삶" required error={errors.lifeGoal}>
-            <FTextarea placeholder="예: 좋아하는 일을 하면서 행복하게 사는 것이요." value={form.lifeGoal || ""} onChange={(e) => set("lifeGoal", e.target.value)} />
+            <FTextarea placeholder="마케터로서 꾸준히 성장하며 제가 좋아하는 브랜드를 만드는 일을 하고 싶어요. 일도 즐기고, 가족과 친구들에게도 시간을 쓰며 균형 있게 살아가는 것이 목표입니다." value={form.lifeGoal || ""} onChange={(e) => set("lifeGoal", e.target.value)} />
           </FormField>
           <FormField label="혼자 있을 때 무엇을 하며 시간을 보내나요?" required error={errors.hobbies}>
-            <FTextarea placeholder="예: 새로운 카페를 탐방하거나 유튜브를 봐요." value={form.hobbies || ""} onChange={(e) => set("hobbies", e.target.value)} />
+            <FTextarea placeholder="운동을 하거나 새로운 카페를 찾아다니고, 집에서는 영화나 유튜브를 보며 쉬는 편이에요. 가끔은 책을 읽거나 드라이브도 갑니다." value={form.hobbies || ""} onChange={(e) => set("hobbies", e.target.value)} />
           </FormField>
           <FormField label="인스타그램 ID" required error={errors.instagram}>
             <FInput placeholder="@ 없이 입력" value={form.instagram || ""} onChange={(e) => set("instagram", e.target.value)} />
@@ -827,13 +833,13 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
       {step === 3 && (
         <div className="space-y-5">
           <FormField label="어떤 사람에게 끌리나요? (이상형 등)" required error={errors.idealType}>
-            <FTextarea placeholder="예: 대화가 잘 통하는 사람이 좋아요." value={form.idealType || ""} onChange={(e) => set("idealType", e.target.value)} />
+            <FTextarea placeholder="강아지상처럼 인상이 편안하고 웃는 모습이 예쁜 사람이 좋아요. 대화가 잘 통하고 배려심이 있으며, 자신의 일을 열심히 하는 사람이면 더 좋습니다." value={form.idealType || ""} onChange={(e) => set("idealType", e.target.value)} />
           </FormField>
           <FormField label="사람들이 자주 말하는 나의 장점은?" required error={errors.charm}>
-            <FTextarea placeholder="예: 분위기를 밝게 만드는 편이에요." value={form.charm || ""} onChange={(e) => set("charm", e.target.value)} />
+            <FTextarea placeholder="낯을 많이 가리지 않고 처음 보는 사람과도 금방 친해진다는 말을 자주 들어요. 리액션이 좋고 분위기를 편하게 만든다고 합니다." value={form.charm || ""} onChange={(e) => set("charm", e.target.value)} />
           </FormField>
           <FormField label="자주 듣는 닮은 꼴" required error={errors.celebrity} hint="연예인, 캐릭터, 동물 등">
-            <FInput placeholder="직접 입력해주세요" value={form.celebrity || ""} onChange={(e) => set("celebrity", e.target.value)} />
+            <FInput placeholder="윈터, 안유진, 짱구, 강아지상처럼 평소 가장 많이 듣는 닮은 꼴을 적어주세요." value={form.celebrity || ""} onChange={(e) => set("celebrity", e.target.value)} />
           </FormField>
         </div>
       )}

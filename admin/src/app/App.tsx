@@ -56,6 +56,8 @@ function AdminLoginPage({ onLogin }: { onLogin: () => void }) {
         setError("DB 보안 설정을 한 번 더 실행해 주세요. (002_fix_pgcrypto.sql)");
       } else if (msg === "wrong password") {
         setError("비밀번호가 올바르지 않습니다.");
+      } else if (/Invalid path/i.test(msg) || msg.includes("PGRST125")) {
+        setError("Supabase URL이 잘못되었습니다. Vercel Env의 VITE_SUPABASE_URL은 https://xxxx.supabase.co 형태여야 하고, /rest/v1 은 빼 주세요. 수정 후 Redeploy 하세요.");
       } else {
         setError(msg || "로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.");
       }

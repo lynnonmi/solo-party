@@ -4,8 +4,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const SB_URL  = (import.meta.env.VITE_SUPABASE_URL  as string) ?? "";
-const SB_ANON = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "";
+/** Vercel Env에 /rest/v1 이 붙으면 PGRST125 (Invalid path...) 가 납니다 */
+function normalizeSupabaseUrl(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\/$/, "")
+    .replace(/\/rest\/v1$/i, "");
+}
+
+const SB_URL = normalizeSupabaseUrl((import.meta.env.VITE_SUPABASE_URL as string) ?? "");
+const SB_ANON = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "").trim().replace(/^["']|["']$/g, "");
 const ADMIN_TOKEN_KEY = "sp_admin_token";
 
 export interface AdminVoteSettings {
@@ -69,6 +78,9 @@ export const adminApi = {
       }
       if (error.message?.includes("wrong password")) {
         throw new Error("wrong password");
+      }
+      if (/Invalid path/i.test(error.message || "") || error.code === "PGRST125") {
+        throw new Error(error.message || "Invalid path specified in request URL");
       }
       throw new Error(error.message || "login_failed");
     }
