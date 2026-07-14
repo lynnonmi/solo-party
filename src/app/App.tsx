@@ -12,15 +12,19 @@ import posterImage from "@/imports/Group_5.png";
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT
 ═══════════════════════════════════════════ */
-const SB_URL = ((import.meta.env.VITE_SUPABASE_URL as string) ?? "")
-  .trim()
-  .replace(/^["']|["']$/g, "")
-  .replace(/\/$/, "")
-  .replace(/\/rest\/v1$/i, "");
+const SB_URL = (() => {
+  let url = ((import.meta.env.VITE_SUPABASE_URL as string) ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\/rest\/v1\/?/gi, "/")
+    .replace(/\/+$/, "");
+  url = url.replace(/^(https?:)\/(?!\/)/i, "$1//");
+  return url;
+})();
 const SB_ANON = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string) ?? "")
   .trim()
   .replace(/^["']|["']$/g, "");
-const SB_READY = SB_URL.startsWith("https://");
+const SB_READY = /^https:\/\//i.test(SB_URL);
 
 const _sbCache: Record<string, ReturnType<typeof createClient>> = {};
 

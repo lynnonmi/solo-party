@@ -4,13 +4,18 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-/** Vercel Env에 /rest/v1 이 붙으면 PGRST125 (Invalid path...) 가 납니다 */
+/** Vercel Env에 /rest/v1 이 붙거나 https:/ 처럼 깨지면 로그인 실패합니다 */
 function normalizeSupabaseUrl(raw: string): string {
-  return raw
+  let url = raw
     .trim()
     .replace(/^["']|["']$/g, "")
-    .replace(/\/$/, "")
-    .replace(/\/rest\/v1$/i, "");
+    .replace(/\/rest\/v1\/?/gi, "/")
+    .replace(/\/+$/, "");
+
+  // https:/host → https://host (붙여넣기/빌드 중 슬래시 유실 보정)
+  url = url.replace(/^(https?:)\/(?!\/)/i, "$1//");
+
+  return url;
 }
 
 const SB_URL = normalizeSupabaseUrl((import.meta.env.VITE_SUPABASE_URL as string) ?? "");
