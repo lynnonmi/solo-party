@@ -115,17 +115,35 @@ export const adminApi = {
     }
   },
 
-  async sendSms(applicantId: string, text?: string): Promise<void> {
+  async sendSms(applicantId: string, text?: string, subject?: string): Promise<void> {
     const token = typeof window !== "undefined" ? localStorage.getItem(ADMIN_TOKEN_KEY) : null;
+    if (!token) {
+      throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+    }
+
     const { data, error } = await getClient().functions.invoke("send-sms", {
-      body: { applicant_id: applicantId, text },
-      headers: token ? { "x-admin-token": token } : {},
+      body: { applicant_id: applicantId, text, subject, admin_token: token },
+      headers: { "x-admin-token": token },
     });
 
     if (error) {
       if (error.message?.includes("Failed to send a request to the Edge Function")) {
         throw new Error("SMS 기능이 아직 배포되지 않았습니다. Supabase에서 send-sms 함수를 배포해 주세요.");
       }
+
+      // Edge Function이 4xx/5xx를 주면 본문({ error })을 꺼내 보여줌
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === "function") {
+        try {
+          const body = await ctx.json() as { error?: string; message?: string };
+          if (body?.error || body?.message) {
+            throw new Error(body.error || body.message);
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== error.message) throw e;
+        }
+      }
+
       throw new Error(error.message || "문자 전송에 실패했습니다.");
     }
 
