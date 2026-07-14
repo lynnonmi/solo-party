@@ -3,6 +3,7 @@ import { ExternalLink, Sheet } from "lucide-react";
 import type { Application } from "./types";
 import {
   getGoogleSheetsOpenUrl,
+  getGoogleSheetsSecret,
   getGoogleSheetsUrl,
   isGoogleSheetsConfigured,
   setGoogleSheetsUrl,
@@ -20,6 +21,7 @@ export function GoogleSheetsActions({
   const [setupOpen, setSetupOpen] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [openUrlInput, setOpenUrlInput] = useState("");
+  const [secretInput, setSecretInput] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<SyncResult | null>(null);
   const [configured, setConfigured] = useState(isGoogleSheetsConfigured);
@@ -28,6 +30,7 @@ export function GoogleSheetsActions({
     if (setupOpen) {
       setUrlInput(getGoogleSheetsUrl());
       setOpenUrlInput(getGoogleSheetsOpenUrl());
+      setSecretInput(getGoogleSheetsSecret());
     }
   }, [setupOpen]);
 
@@ -40,7 +43,11 @@ export function GoogleSheetsActions({
       setResult({ ok: false, message: "script.google.com 으로 시작하는 웹 앱 URL을 입력해 주세요." });
       return;
     }
-    setGoogleSheetsUrl(urlInput, openUrlInput);
+    if (!secretInput.trim()) {
+      setResult({ ok: false, message: "Apps Script SHARED_SECRET과 동일한 시크릿을 입력해 주세요." });
+      return;
+    }
+    setGoogleSheetsUrl(urlInput, openUrlInput, secretInput);
     setConfigured(isGoogleSheetsConfigured());
     setSetupOpen(false);
     setResult({ ok: true, message: "구글 시트 URL이 저장되었습니다. 이제 동기화를 눌러 보세요." });
@@ -129,8 +136,16 @@ export function GoogleSheetsActions({
               placeholder="https://docs.google.com/spreadsheets/d/..."
               className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors mb-4"
             />
+            <label className="block text-xs text-muted-foreground mb-1.5">SHARED_SECRET (필수)</label>
+            <input
+              type="password"
+              value={secretInput}
+              onChange={(e) => setSecretInput(e.target.value)}
+              placeholder="Apps Script 스크립트 속성과 동일"
+              className="w-full px-4 py-3 rounded-xl bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors mb-4"
+            />
             <p className="text-xs text-amber-400/90 mb-4">
-              처음 동기화 전, 웹 앱 URL을 브라우저 새 탭에서 한 번 열고 「액세스 허용」을 눌러 주세요.
+              Apps Script에 새 코드를 붙여넣은 뒤 재배포하고, 웹 앱 URL을 새 탭에서 한 번 열어 「액세스 허용」을 눌러 주세요.
             </p>
             <div className="flex gap-2">
               <button onClick={saveUrl} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90">

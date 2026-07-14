@@ -376,6 +376,20 @@ export default function App() {
     go("home");
   };
 
+  if (!SB_READY) {
+    return (
+      <div className="max-w-md mx-auto min-h-screen flex flex-col items-center justify-center px-6 text-center">
+        <AlertCircle className="w-10 h-10 text-[#F0A8BE] mb-4" aria-hidden />
+        <h1 className="text-lg font-bold text-foreground mb-2">서비스를 불러올 수 없습니다</h1>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Supabase 연결 설정이 없습니다. Vercel 환경변수{" "}
+          <code className="text-foreground/80">VITE_SUPABASE_URL</code>,{" "}
+          <code className="text-foreground/80">VITE_SUPABASE_ANON_KEY</code>를 확인한 뒤 다시 배포해 주세요.
+        </p>
+      </div>
+    );
+  }
+
   if (appLoading) {
     return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground text-sm">로딩 중...</div>;
   }

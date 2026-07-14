@@ -109,6 +109,47 @@ async function fnExists(sql, name) {
   return exists;
 }
 
+async function colExists(sql, table, column) {
+  const [{ exists }] = await sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = ${table}
+        AND column_name = ${column}
+    ) AS exists
+  `;
+  return exists;
+}
+
+/** 기존 DB baseline: 실제 객체로 검증. 없으면 스킵 등록하지 않음 → 이후 적용. */
+async function isAlreadyApplied(sql, file) {
+  if (/^00[1-8]_/.test(file)) return true;
+  if (file === "009_admin_delete_applicant.sql") return fnExists(sql, "admin_delete_applicant");
+  if (file === "009_vote_edit_cancel.sql") return fnExists(sql, "cancel_vote");
+  if (file === "010_one_by_one_vote.sql") return fnExists(sql, "submit_single_vote");
+  if (file === "011_get_votes_for_me.sql") return fnExists(sql, "get_votes_for_me");
+  if (file === "012_deposit_confirmed.sql") {
+    return (
+      (await colExists(sql, "applicants", "deposit_confirmed")) &&
+      (await fnExists(sql, "admin_toggle_deposit_confirmed"))
+    );
+  }
+  if (file === "013_reload_deposit_schema.sql") {
+    return colExists(sql, "applicants", "deposit_confirmed");
+  }
+  if (file === "014_admin_sms_rpcs.sql") {
+    return (
+      (await fnExists(sql, "admin_verify_session")) &&
+      (await fnExists(sql, "admin_get_applicant_for_sms"))
+    );
+  }
+  if (file === "015_admin_password_ops.sql") {
+    return fnExists(sql, "admin_change_password");
+  }
+  // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
+  return false;
+}
+
 async function maybeBaseline(sql, done) {
   const [{ c }] = await sql`SELECT count(*)::int AS c FROM _app_migrations`;
   if (c > 0) return;
@@ -118,20 +159,18 @@ async function maybeBaseline(sql, done) {
   `;
   if (!legacy) return;
 
-  console.log("ℹ️  기존 DB 감지 — 이미 적용된 마이그레이션을 자동 등록합니다.\n");
+  console.log("ℹ️  기존 DB 감지 — 객체 검증 후 적용된 마이그레이션만 등록합니다.\n");
 
   for (const file of files) {
     if (done.has(file)) continue;
 
-    let skip = false;
-    if (file === "011_get_votes_for_me.sql") skip = await fnExists(sql, "get_votes_for_me");
-    else if (file === "010_one_by_one_vote.sql") skip = await fnExists(sql, "submit_single_vote");
-    else skip = true;
-
+    const skip = await isAlreadyApplied(sql, file);
     if (skip) {
       await sql`INSERT INTO _app_migrations (version) VALUES (${file}) ON CONFLICT DO NOTHING`;
       done.add(file);
       console.log(`   ✓ ${file}`);
+    } else {
+      console.log(`   · ${file} (미적용 — 이어서 실행)`);
     }
   }
   if (files.some((f) => !done.has(f))) console.log("");
@@ -149,6 +188,16 @@ async function main() {
 
   const applied = await sql`SELECT version FROM _app_migrations`;
   const done = new Set(applied.map((r) => r.version));
+
+  // 잘못된 baseline으로 등록만 된 마이그레이션(객체 없음)은 재적용
+  for (const file of [...done]) {
+    if (/^00[1-8]_/.test(file)) continue;
+    if (!(await isAlreadyApplied(sql, file))) {
+      await sql`DELETE FROM _app_migrations WHERE version = ${file}`;
+      done.delete(file);
+      console.log(`⚠️  ${file} — DB 객체 없음, 재적용 예정`);
+    }
+  }
 
   await maybeBaseline(sql, done);
 

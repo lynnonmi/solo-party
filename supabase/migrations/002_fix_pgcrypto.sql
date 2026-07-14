@@ -5,10 +5,10 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
+-- 기존 비밀번호를 덮어쓰지 않음. 교체는 npm run admin:set-password
 INSERT INTO admin_config (id, password_hash)
-VALUES (1, extensions.crypt('clynniemine0505', extensions.gen_salt('bf')))
-ON CONFLICT (id) DO UPDATE
-SET password_hash = EXCLUDED.password_hash;
+VALUES (1, extensions.crypt(encode(extensions.gen_random_bytes(32), 'hex'), extensions.gen_salt('bf')))
+ON CONFLICT (id) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION admin_login(p_password text)
 RETURNS TABLE (token text)

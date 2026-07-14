@@ -7,6 +7,7 @@ import {
 
 const URL_KEY = "sp_google_sheets_url";
 const OPEN_KEY = "sp_google_sheets_open_url";
+const SECRET_KEY = "sp_google_sheets_secret";
 
 export function normalizeGasUrl(raw: string): string {
   let url = raw.trim();
@@ -33,10 +34,22 @@ export function getGoogleSheetsOpenUrl(): string {
   );
 }
 
-export function setGoogleSheetsUrl(scriptUrl: string, openUrl?: string): void {
+export function getGoogleSheetsSecret(): string {
+  return (
+    ((import.meta.env.VITE_GOOGLE_SHEETS_SECRET as string | undefined) || "").trim() ||
+    (typeof window !== "undefined" ? localStorage.getItem(SECRET_KEY)?.trim() || "" : "")
+  );
+}
+
+export function setGoogleSheetsUrl(scriptUrl: string, openUrl?: string, secret?: string): void {
   localStorage.setItem(URL_KEY, normalizeGasUrl(scriptUrl));
   if (openUrl?.trim()) {
     localStorage.setItem(OPEN_KEY, openUrl.trim());
+  }
+  if (secret !== undefined) {
+    const s = secret.trim();
+    if (s) localStorage.setItem(SECRET_KEY, s);
+    else localStorage.removeItem(SECRET_KEY);
   }
 }
 
@@ -62,6 +75,7 @@ export async function syncApplicationsToGoogleSheets(
 ): Promise<SyncResult> {
   const url = getGoogleSheetsUrl();
   const openUrl = getGoogleSheetsOpenUrl();
+  const secret = getGoogleSheetsSecret();
 
   if (!isGoogleSheetsConfigured()) {
     return {
@@ -70,7 +84,16 @@ export async function syncApplicationsToGoogleSheets(
     };
   }
 
+  if (!secret) {
+    return {
+      ok: false,
+      message:
+        "시트 시크릿이 없습니다. 「시트 연결」에서 SHARED_SECRET과 동일한 값을 입력하거나 VITE_GOOGLE_SHEETS_SECRET을 설정하세요.",
+    };
+  }
+
   const payload = {
+    secret,
     replace: options?.replace ?? true,
     headers: [...EXPORT_HEADERS],
     rows: applicationsToExportRows(apps),

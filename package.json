@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "db:push": "node scripts/db-push.mjs"
+    "db:push": "node scripts/db-push.mjs",
+    "admin:set-password": "node scripts/set-admin-password.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -58,7 +59,6 @@
     "react-popper": "2.3.0",
     "react-resizable-panels": "2.1.7",
     "react-responsive-masonry": "2.7.1",
-    "react-router": "7.13.0",
     "react-slick": "0.31.0",
     "recharts": "2.15.2",
     "sonner": "2.0.3",
@@ -67,9 +67,9 @@
     "vaul": "1.1.2"
   },
   "devDependencies": {
-    "postgres": "^3.4.7",
     "@tailwindcss/vite": "4.1.12",
     "@vitejs/plugin-react": "4.7.0",
+    "postgres": "^3.4.7",
     "tailwindcss": "4.1.12",
     "vite": "6.3.5"
   },

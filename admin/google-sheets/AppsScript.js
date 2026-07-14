@@ -5,13 +5,19 @@
  * 1. Google Sheets 새로 만들기
  * 2. 확장 프로그램 → Apps Script
  * 3. 이 파일 내용 전체 붙여넣기 → 저장
- * 4. 배포 → 새 배포 → 유형: 웹 앱
+ * 4. 프로젝트 설정 → 스크립트 속성 → SHARED_SECRET 추가 (관리자 VITE_GOOGLE_SHEETS_SECRET 과 동일 값)
+ * 5. 배포 → 새 배포 → 유형: 웹 앱
  *    - 실행 주체: 나
  *    - 액세스: 모든 사용자
- * 5. 생성된 웹 앱 URL을 관리자 페이지 「시트 연결」에 붙여넣기
+ * 6. 생성된 웹 앱 URL을 관리자 페이지 「시트 연결」에 붙여넣기
+ * 7. 관리자 .env / Vercel: VITE_GOOGLE_SHEETS_SECRET=위에서 넣은 시크릿
  */
 
 const SHEET_NAME = "신청자";
+
+function getSharedSecret() {
+  return PropertiesService.getScriptProperties().getProperty("SHARED_SECRET") || "";
+}
 
 function doGet() {
   return json({ ok: true, message: "connected" });
@@ -23,6 +29,18 @@ function doPost(e) {
       return json({ ok: false, error: "empty request body" });
     }
     const data = JSON.parse(e.postData.contents);
+
+    const expected = getSharedSecret();
+    if (!expected) {
+      return json({
+        ok: false,
+        error: "SHARED_SECRET 스크립트 속성이 없습니다. Apps Script 프로젝트 설정에서 추가하세요.",
+      });
+    }
+    if (data.secret !== expected) {
+      return json({ ok: false, error: "unauthorized" });
+    }
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAME);
     if (!sheet) sheet = ss.insertSheet(SHEET_NAME);

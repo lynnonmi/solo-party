@@ -77,8 +77,10 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 
 INSERT INTO vote_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+-- 초기 비밀번호는 저장소에 두지 않습니다. 배포 후:
+--   ADMIN_PASSWORD='강한비밀번호' npm run admin:set-password
 INSERT INTO admin_config (id, password_hash)
-VALUES (1, extensions.crypt('clynniemine0505', extensions.gen_salt('bf')))
+VALUES (1, extensions.crypt(encode(extensions.gen_random_bytes(32), 'hex'), extensions.gen_salt('bf')))
 ON CONFLICT (id) DO NOTHING;
 
 -- ── 뷰 ────────────────────────────────────────────────────────────
