@@ -17,11 +17,12 @@ export function FormField({
   );
 }
 
-export function FInput({ className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+export function FInput({ className = "", style, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full px-4 py-3 rounded-xl bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors ${className}`}
+      className={`w-full px-4 py-3 rounded-xl bg-secondary border border-border text-base text-foreground placeholder:text-muted-foreground/55 outline-none focus:border-primary transition-colors ${className}`}
+      style={{ ...style, fontSize: 16 }}
     />
   );
 }

@@ -272,7 +272,6 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     setVoteActionError("");
     try {
       if (voteConfirm === "open") {
-        await adminApi.clearVoteData();
         await adminApi.toggleVoteOpen(true);
       } else if (voteConfirm === "close") {
         await adminApi.toggleVoteClosed(true);
@@ -620,7 +619,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             </h3>
             <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
               {voteConfirm === "open" && (
-                <>투표를 열기 전에 <span className="text-destructive font-medium">기존 투표·쪽지·매칭</span>을 모두 삭제합니다. 계속할까요?</>
+                <>투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭은 지워지고, 투표·쪽지 데이터는 유지됩니다.</>}
@@ -821,7 +820,6 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     setVoteActionError("");
     try {
       if (voteConfirm === "open") {
-        await adminApi.clearVoteData();
         await adminApi.toggleVoteOpen(true);
       } else if (voteConfirm === "close") {
         await adminApi.toggleVoteClosed(true);
@@ -1223,7 +1221,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
             </h3>
             <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
               {voteConfirm === "open" && (
-                <>투표를 열기 전에 <span className="text-destructive font-medium">기존 투표·쪽지·매칭</span>을 모두 삭제합니다. 계속할까요?</>
+                <>투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭은 지워지고, 투표·쪽지 데이터는 유지됩니다.</>}
