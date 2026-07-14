@@ -7,7 +7,7 @@ import {
   Camera
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
-import posterImage from "@/imports/Group_5_mobile.jpg";
+import posterImage from "@/imports/Group_5_mobile.webp";
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT
