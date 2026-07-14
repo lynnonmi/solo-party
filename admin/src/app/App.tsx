@@ -123,39 +123,68 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [deleting, setDeleting] = useState(false);
   const [depositError, setDepositError] = useState("");
   const [depositToggling, setDepositToggling] = useState(false);
+  const [voteConfirm, setVoteConfirm] = useState<null | "open" | "close" | "unclose" | "clear">(null);
+  const [voteActionError, setVoteActionError] = useState("");
+  const [voteActing, setVoteActing] = useState(false);
 
   const refresh = async () => {
-    const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
-      adminApi.listApplicants(),
-      adminApi.getVoteResults(),
-      adminApi.getMatches(),
-      adminApi.getVoteSettings(),
-    ]);
-    setApps(appsRaw.map((a: Record<string, unknown>) => ({
-      id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
-      mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
-      currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
-      instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
-      celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
-      refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
-      depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
-    })) as Application[]);
-    setSubs(subsRaw);
-    setMatches(matchesRaw);
-    setSettings(settingsRaw);
-    setLoading(false);
+    const ok = await adminApi.verifySession();
+    if (!ok) {
+      adminApi.logout();
+      onLogout();
+      return;
+    }
+    try {
+      const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
+        adminApi.listApplicants(),
+        adminApi.getVoteResults(),
+        adminApi.getMatches(),
+        adminApi.getVoteSettings(),
+      ]);
+      setApps(appsRaw.map((a: Record<string, unknown>) => ({
+        id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
+        mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
+        currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
+        instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
+        celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
+        refundBank: a.refund_bank, refundAccount: a.refund_account,
+        status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
+        depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
+      })) as Application[]);
+      setSubs(subsRaw);
+      setMatches(matchesRaw);
+      setSettings(settingsRaw);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("만료") || msg.includes("unauthorized")) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { refresh(); }, []);
 
   const updateStatus = async (id: string, status: AppStatus) => {
-    await adminApi.updateStatus(id, status);
-    if (status === "approved" || status === "rejected") {
-      const t = apps.find(a => a.id === id);
-      if (t) setSmsModal({ ...t, status });
+    try {
+      await adminApi.updateStatus(id, status);
+      if (status === "approved" || status === "rejected") {
+        const t = apps.find(a => a.id === id);
+        if (t) setSmsModal({ ...t, status });
+      }
+      refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "상태 변경에 실패했습니다.";
+      if (msg.includes("만료") || msg.includes("unauthorized")) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
+      setVoteActionError(msg);
     }
-    refresh();
   };
 
   const toggleDeposit = async (id: string, confirmed: boolean) => {
@@ -207,10 +236,21 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const toggleVoteOpen = async () => {
+  const toggleVoteOpen = () => {
     if (!settings) return;
-    await adminApi.toggleVoteOpen(!settings.is_open);
-    refresh();
+    if (settings.is_open) {
+      void (async () => {
+        try {
+          await adminApi.toggleVoteOpen(false);
+          refresh();
+        } catch (e) {
+          setVoteActionError(e instanceof Error ? e.message : "투표 설정 실패");
+        }
+      })();
+      return;
+    }
+    setVoteActionError("");
+    setVoteConfirm("open");
   };
 
   const toggleGenderOpen = async (gender: Gender) => {
@@ -220,10 +260,40 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     refresh();
   };
 
-  const toggleVoteClosed = async () => {
+  const toggleVoteClosed = () => {
     if (!settings) return;
-    await adminApi.toggleVoteClosed(!settings.is_closed);
-    refresh();
+    setVoteActionError("");
+    setVoteConfirm(settings.is_closed ? "unclose" : "close");
+  };
+
+  const confirmVoteAction = async () => {
+    if (!voteConfirm || !settings) return;
+    setVoteActing(true);
+    setVoteActionError("");
+    try {
+      if (voteConfirm === "open") {
+        await adminApi.clearVoteData();
+        await adminApi.toggleVoteOpen(true);
+      } else if (voteConfirm === "close") {
+        await adminApi.toggleVoteClosed(true);
+      } else if (voteConfirm === "unclose") {
+        await adminApi.toggleVoteClosed(false);
+      } else if (voteConfirm === "clear") {
+        await adminApi.clearVoteData();
+      }
+      setVoteConfirm(null);
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "작업에 실패했습니다.";
+      if (msg.includes("만료")) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
+      setVoteActionError(msg);
+    } finally {
+      setVoteActing(false);
+    }
   };
 
   if (loading || !settings) {
@@ -417,6 +487,17 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => { setVoteActionError(""); setVoteConfirm("clear"); }}
+            className="w-full py-3 rounded-2xl text-sm font-medium border border-destructive/30 text-destructive hover:bg-destructive/10"
+          >
+            투표·쪽지 전체 초기화
+          </button>
+          {voteActionError && !voteConfirm && (
+            <p className="text-xs text-destructive">{voteActionError}</p>
+          )}
+
           <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 현황</p>
             <div className="flex gap-4">
@@ -528,6 +609,34 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
+      {voteConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => !voteActing && setVoteConfirm(null)}>
+          <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold mb-2">
+              {voteConfirm === "open" && "투표 오픈"}
+              {voteConfirm === "close" && "투표 마감"}
+              {voteConfirm === "unclose" && "마감 취소"}
+              {voteConfirm === "clear" && "투표 데이터 초기화"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+              {voteConfirm === "open" && (
+                <>투표를 열기 전에 <span className="text-destructive font-medium">기존 투표·쪽지·매칭</span>을 모두 삭제합니다. 계속할까요?</>
+              )}
+              {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
+              {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭은 지워지고, 투표·쪽지 데이터는 유지됩니다.</>}
+              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
+            </p>
+            {voteActionError && <p className="text-xs text-destructive mb-3">{voteActionError}</p>}
+            <div className="flex gap-2">
+              <button onClick={confirmVoteAction} disabled={voteActing} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {voteActing ? "처리 중..." : "확인"}
+              </button>
+              <button onClick={() => setVoteConfirm(null)} disabled={voteActing} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -561,40 +670,67 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [depositToggling, setDepositToggling] = useState(false);
   const [photoModal, setPhotoModal] = useState<string[] | null>(null);
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [voteConfirm, setVoteConfirm] = useState<null | "open" | "close" | "unclose" | "clear">(null);
+  const [voteActionError, setVoteActionError] = useState("");
+  const [voteActing, setVoteActing] = useState(false);
 
   const refresh = async () => {
-    const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
-      adminApi.listApplicants(),
-      adminApi.getVoteResults(),
-      adminApi.getMatches(),
-      adminApi.getVoteSettings(),
-    ]);
-    setApps(appsRaw.map((a: Record<string, unknown>) => ({
-      id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
-      mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
-      currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
-      instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
-      celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
-      refundBank: a.refund_bank, refundAccount: a.refund_account,
-      status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
-      depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
-    })) as Application[]);
-    setSubs(subsRaw);
-    setMatches(matchesRaw);
-    setSettings(settingsRaw);
-    setLoading(false);
+    const ok = await adminApi.verifySession();
+    if (!ok) {
+      adminApi.logout();
+      onLogout();
+      return;
+    }
+    try {
+      const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
+        adminApi.listApplicants(),
+        adminApi.getVoteResults(),
+        adminApi.getMatches(),
+        adminApi.getVoteSettings(),
+      ]);
+      setApps(appsRaw.map((a: Record<string, unknown>) => ({
+        id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
+        mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
+        currentWork: a.current_work, lifeGoal: a.life_goal, hobbies: a.alone_time,
+        instagram: a.instagram, idealType: a.ideal_type, charm: a.charm,
+        celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
+        refundBank: a.refund_bank, refundAccount: a.refund_account,
+        status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
+        depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
+      })) as Application[]);
+      setSubs(subsRaw);
+      setMatches(matchesRaw);
+      setSettings(settingsRaw);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("만료") || msg.includes("unauthorized")) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { refresh(); }, []);
 
   const updateStatus = async (id: string, status: AppStatus) => {
-    await adminApi.updateStatus(id, status);
-    if (selected?.id === id) setSelected(u => u ? { ...u, status } : u);
-    if (status === "approved" || status === "rejected") {
-      const t = apps.find(a => a.id === id);
-      if (t) setSmsModal({ ...t, status });
+    try {
+      await adminApi.updateStatus(id, status);
+      if (selected?.id === id) setSelected(u => u ? { ...u, status } : u);
+      if (status === "approved" || status === "rejected") {
+        const t = apps.find(a => a.id === id);
+        if (t) setSmsModal({ ...t, status });
+      }
+      refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("만료") || msg.includes("unauthorized")) {
+        adminApi.logout();
+        onLogout();
+      }
     }
-    refresh();
   };
 
   const toggleDeposit = async (id: string, confirmed: boolean) => {
@@ -649,10 +785,21 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  const toggleVoteOpen = async () => {
+  const toggleVoteOpen = () => {
     if (!settings) return;
-    await adminApi.toggleVoteOpen(!settings.is_open);
-    refresh();
+    if (settings.is_open) {
+      void (async () => {
+        try {
+          await adminApi.toggleVoteOpen(false);
+          refresh();
+        } catch (e) {
+          setVoteActionError(e instanceof Error ? e.message : "투표 설정 실패");
+        }
+      })();
+      return;
+    }
+    setVoteActionError("");
+    setVoteConfirm("open");
   };
 
   const toggleGenderOpen = async (gender: Gender) => {
@@ -662,10 +809,40 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     refresh();
   };
 
-  const toggleVoteClosed = async () => {
+  const toggleVoteClosed = () => {
     if (!settings) return;
-    await adminApi.toggleVoteClosed(!settings.is_closed);
-    refresh();
+    setVoteActionError("");
+    setVoteConfirm(settings.is_closed ? "unclose" : "close");
+  };
+
+  const confirmVoteAction = async () => {
+    if (!voteConfirm || !settings) return;
+    setVoteActing(true);
+    setVoteActionError("");
+    try {
+      if (voteConfirm === "open") {
+        await adminApi.clearVoteData();
+        await adminApi.toggleVoteOpen(true);
+      } else if (voteConfirm === "close") {
+        await adminApi.toggleVoteClosed(true);
+      } else if (voteConfirm === "unclose") {
+        await adminApi.toggleVoteClosed(false);
+      } else if (voteConfirm === "clear") {
+        await adminApi.clearVoteData();
+      }
+      setVoteConfirm(null);
+      await refresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "작업에 실패했습니다.";
+      if (msg.includes("만료")) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
+      setVoteActionError(msg);
+    } finally {
+      setVoteActing(false);
+    }
   };
 
   if (loading || !settings) {
@@ -904,6 +1081,17 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() => { setVoteActionError(""); setVoteConfirm("clear"); }}
+              className="mb-6 px-4 py-2.5 rounded-xl text-sm font-medium border border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              투표·쪽지 전체 초기화
+            </button>
+            {voteActionError && !voteConfirm && (
+              <p className="text-xs text-destructive mb-4">{voteActionError}</p>
+            )}
+
             <h3 className="text-sm font-semibold mb-3">투표 결과</h3>
             <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
               <table className="w-full text-sm">
@@ -1019,6 +1207,34 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 {deleting ? "삭제 중..." : "삭제 확인"}
               </button>
               <button onClick={() => setDeleteModal(null)} disabled={deleting} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {voteConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => !voteActing && setVoteConfirm(null)}>
+          <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold mb-2">
+              {voteConfirm === "open" && "투표 오픈"}
+              {voteConfirm === "close" && "투표 마감"}
+              {voteConfirm === "unclose" && "마감 취소"}
+              {voteConfirm === "clear" && "투표 데이터 초기화"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+              {voteConfirm === "open" && (
+                <>투표를 열기 전에 <span className="text-destructive font-medium">기존 투표·쪽지·매칭</span>을 모두 삭제합니다. 계속할까요?</>
+              )}
+              {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
+              {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭은 지워지고, 투표·쪽지 데이터는 유지됩니다.</>}
+              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
+            </p>
+            {voteActionError && <p className="text-xs text-destructive mb-3">{voteActionError}</p>}
+            <div className="flex gap-2">
+              <button onClick={confirmVoteAction} disabled={voteActing} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                {voteActing ? "처리 중..." : "확인"}
+              </button>
+              <button onClick={() => setVoteConfirm(null)} disabled={voteActing} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">취소</button>
             </div>
           </div>
         </div>

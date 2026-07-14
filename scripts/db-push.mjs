@@ -146,6 +146,9 @@ async function isAlreadyApplied(sql, file) {
   if (file === "015_admin_password_ops.sql") {
     return fnExists(sql, "admin_change_password");
   }
+  if (file === "016_security_hardening.sql") {
+    return fnExists(sql, "admin_clear_vote_data");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

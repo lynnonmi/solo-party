@@ -229,13 +229,16 @@ function resolveVoteView(app: Application, settings: VoteSettings): View | null 
 function VotePhoto({ src, alt, className, width = 400 }: {
   src: string; alt: string; className?: string; width?: number;
 }) {
+  const [failed, setFailed] = React.useState(false);
+  const display = failed ? src : photoDisplayUrl(src, width);
   return (
     <img
-      src={photoDisplayUrl(src, width)}
+      src={display}
       alt={alt}
       className={className}
       loading="lazy"
       decoding="async"
+      onError={() => { if (!failed) setFailed(true); }}
     />
   );
 }

@@ -223,7 +223,33 @@ export const adminApi = {
 
   async toggleVoteOpen(open: boolean): Promise<void> {
     const { error } = await getClient().rpc("admin_toggle_vote_open", { p_open: open });
-    if (error) throw error;
+    if (error) {
+      if (error.message?.includes("unauthorized")) {
+        throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+      throw new Error(error.message || "투표 오픈 설정에 실패했습니다.");
+    }
+  },
+
+  async clearVoteData(): Promise<void> {
+    const { error } = await getClient().rpc("admin_clear_vote_data", {
+      p_confirm: "DELETE_ALL_VOTES",
+    });
+    if (error) {
+      if (error.message?.includes("unauthorized")) {
+        throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+      if (error.code === "PGRST202" || error.message?.includes("Could not find the function")) {
+        throw new Error("DB에 투표 초기화 함수가 없습니다. npm run db:push 후 다시 시도해 주세요.");
+      }
+      throw new Error(error.message || "투표 데이터 삭제에 실패했습니다.");
+    }
+  },
+
+  async verifySession(): Promise<boolean> {
+    const { data, error } = await getClient().rpc("admin_verify_session");
+    if (error) return false;
+    return data === true;
   },
 
   async toggleGenderOpen(gender: string, open: boolean): Promise<void> {
