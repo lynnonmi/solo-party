@@ -74,7 +74,7 @@ function voteRpcErrorMessage(msg: string | undefined, fallback: string): string 
   return fallback;
 }
 
-function CsFooter({ className = "" }: { className?: string }) {
+function CsFooter({ className = "", onRefund }: { className?: string; onRefund?: () => void }) {
   return (
     <div className={`text-center pt-6 ${className}`}>
       <p className="text-xs text-muted-foreground mb-2">궁금한 점이 있으신가요?</p>
@@ -86,6 +86,15 @@ function CsFooter({ className = "" }: { className?: string }) {
         <MessageSquare className="w-3.5 h-3.5" />
         카카오 오픈채팅 고객센터
       </a>
+      {onRefund && (
+        <button
+          type="button"
+          onClick={onRefund}
+          className="block mx-auto mt-3 text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
+        >
+          환불 요청하기
+        </button>
+      )}
     </div>
   );
 }
@@ -93,11 +102,11 @@ function CsFooter({ className = "" }: { className?: string }) {
 /* ═══════════════════════════════════════════
    TYPES
 ═══════════════════════════════════════════ */
-type View = "home" | "apply" | "success" | "vote-login" | "vote-profile" | "vote" | "vote-result" | "my-app";
+type View = "home" | "apply" | "success" | "vote-login" | "vote-profile" | "vote" | "vote-result" | "my-app" | "refund-request";
 type Gender = "남성" | "여성";
-type AppStatus = "pending" | "approved" | "rejected";
+type AppStatus = "pending" | "approved" | "rejected" | "refund_requested" | "refunded";
 type GenderFilter = "전체" | "남성" | "여성";
-type StatusFilter = "전체" | "pending" | "approved" | "rejected";
+type StatusFilter = "전체" | "pending" | "approved" | "rejected" | "refund_requested" | "refunded";
 type MatchResponse = "pending" | "going" | "not-going";
 
 interface ReceivedVote {
@@ -406,7 +415,16 @@ export default function App() {
       {view === "vote-profile" && voter && <VoteProfilePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote"         && voter && <VotePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote-result"  && voter && <VoteResultPage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
-      {view === "my-app"       && voter && <MyApplicationPage voter={voter} onBack={() => go(resolveVoteView(voter, settings) ?? "home")} />}
+      {view === "my-app"       && voter && (
+        <MyApplicationPage
+          voter={voter}
+          sessionToken={sessionToken}
+          onUpdate={setVoter}
+          onLogout={handleLogout}
+          onBack={() => go(resolveVoteView(voter, settings) ?? "home")}
+        />
+      )}
+      {view === "refund-request" && <RefundRequestPage go={go} />}
     </div>
   );
 }
@@ -525,7 +543,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
           />
         </div>
         {buttons}
-        <CsFooter />
+        <CsFooter onRefund={() => go("refund-request")} />
       </div>
     );
   }
@@ -621,7 +639,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
         </div>
 
         {buttons}
-        <CsFooter className="pb-4" />
+        <CsFooter className="pb-4" onRefund={() => go("refund-request")} />
       </div>
     </div>
   );
@@ -1061,6 +1079,7 @@ function SuccessPage({ go }: { go: (v: View) => void }) {
         </div>
       </div>
       <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity">홈으로</button>
+      <button onClick={() => go("refund-request")} className="w-full py-3 mt-2 rounded-2xl text-sm text-muted-foreground border border-border hover:text-foreground">환불 요청하기</button>
       <CsFooter />
     </div>
   );
@@ -1765,7 +1784,40 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
 /* ═══════════════════════════════════════════
    MY APPLICATION PAGE (Read-only view)
 ═══════════════════════════════════════════ */
-function MyApplicationPage({ voter, onBack }: { voter: Application; onBack: () => void }) {
+function MyApplicationPage({
+  voter, sessionToken, onUpdate, onLogout, onBack,
+}: {
+  voter: Application;
+  sessionToken: string | null;
+  onUpdate: (a: Application) => void;
+  onLogout: () => void;
+  onBack: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const canRefund = voter.status === "pending" || voter.status === "approved";
+
+  const requestRefund = async () => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const { error } = await getSupabase(sessionToken).rpc("request_refund");
+      if (error) throw error;
+      onUpdate({ ...voter, status: "refund_requested" });
+      setConfirm(false);
+      setMsg("환불 요청이 접수되었습니다. 영업일 기준 확인 후 환불 계좌로 입금됩니다.");
+      localStorage.removeItem("sp_voter_token");
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "";
+      if (m.includes("refund not allowed")) setMsg("현재 상태에서는 환불을 요청할 수 없습니다.");
+      else if (m.includes("PGRST202") || m.includes("request_refund")) setMsg("환불 기능 DB 설정이 필요합니다. 관리자에게 문의해 주세요.");
+      else setMsg(m || "환불 요청에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
       <div className="flex items-center gap-4 pt-6 pb-6">
@@ -1775,8 +1827,118 @@ function MyApplicationPage({ voter, onBack }: { voter: Application; onBack: () =
           <p className="text-xs text-muted-foreground">제출하신 정보는 수정할 수 없는 읽기 전용 상태입니다.</p>
         </div>
       </div>
+      <div className="mb-4 flex items-center justify-between bg-secondary/40 border border-border rounded-xl px-4 py-3 text-sm">
+        <span className="text-muted-foreground">신청 상태</span>
+        <span className="font-medium">
+          {voter.status === "pending" && "검토 대기"}
+          {voter.status === "approved" && "승인"}
+          {voter.status === "rejected" && "거절"}
+          {voter.status === "refund_requested" && "환불 요청됨"}
+          {voter.status === "refunded" && "환불 완료"}
+        </span>
+      </div>
       <ApplicationDetailView app={voter} />
-      <button onClick={onBack} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">투표 화면으로</button>
+      {msg && <p className="text-sm text-primary mt-4 leading-relaxed">{msg}</p>}
+      {canRefund && !confirm && (
+        <button
+          onClick={() => setConfirm(true)}
+          className="w-full py-3.5 rounded-2xl font-medium text-sm border border-destructive/40 text-destructive hover:bg-destructive/10 mt-4"
+        >
+          환불 요청하기
+        </button>
+      )}
+      {canRefund && confirm && (
+        <div className="mt-4 bg-[#131313] border border-destructive/30 rounded-2xl p-4 space-y-3">
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            환불을 요청하면 참가 신청이 취소되고, 등록하신 환불 계좌(<span className="text-foreground">{voter.refundBank} {voter.refundAccount}</span>)로 입금됩니다. 계속할까요?
+          </p>
+          <div className="flex gap-2">
+            <button onClick={requestRefund} disabled={busy} className="flex-1 py-3 rounded-xl text-sm font-medium bg-destructive text-white disabled:opacity-50">
+              {busy ? "요청 중..." : "환불 요청 확정"}
+            </button>
+            <button onClick={() => setConfirm(false)} disabled={busy} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground">취소</button>
+          </div>
+        </div>
+      )}
+      {voter.status === "refund_requested" && !msg && (
+        <p className="text-sm text-muted-foreground mt-4 leading-relaxed">환불 요청이 접수된 상태입니다. 운영진 확인 후 환불 계좌로 입금됩니다.</p>
+      )}
+      {voter.status === "refunded" && (
+        <p className="text-sm text-muted-foreground mt-4 leading-relaxed">환불이 완료되었습니다.</p>
+      )}
+      <button onClick={() => { onLogout(); onBack(); }} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">돌아가기</button>
+    </div>
+  );
+}
+
+function RefundRequestPage({ go }: { go: (v: View) => void }) {
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (!name.trim() || !contact.trim()) {
+      setError("이름과 연락처를 입력해 주세요.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: rpcErr } = await getSupabase().rpc("request_refund_by_identity", {
+        p_name: name.trim(),
+        p_contact: contact.trim(),
+      });
+      if (rpcErr) {
+        if (rpcErr.message?.includes("not found")) throw new Error("일치하는 신청서를 찾지 못했습니다. 이름·연락처를 확인해 주세요.");
+        if (rpcErr.message?.includes("PGRST202") || rpcErr.message?.includes("request_refund")) {
+          throw new Error("환불 기능 DB 설정이 필요합니다. 고객센터로 문의해 주세요.");
+        }
+        throw new Error(rpcErr.message || "환불 요청에 실패했습니다.");
+      }
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "환불 요청에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto px-4 pb-16">
+      <div className="flex items-center gap-4 pt-6 pb-6">
+        <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground"><ChevronLeft className="w-4 h-4" /></button>
+        <div>
+          <h2 className="text-lg font-semibold">환불 요청</h2>
+          <p className="text-xs text-muted-foreground">신청 시 등록한 이름·연락처로 요청합니다.</p>
+        </div>
+      </div>
+      {done ? (
+        <div className="text-center pt-10">
+          <Check className="w-10 h-10 text-primary mx-auto mb-4" />
+          <p className="font-semibold mb-2">환불 요청이 접수되었습니다</p>
+          <p className="text-sm text-muted-foreground leading-relaxed mb-8">등록하신 환불 계좌로 운영진 확인 후 입금됩니다.</p>
+          <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold bg-primary text-primary-foreground">홈으로</button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <FormField label="이름" required>
+            <FInput value={name} onChange={(e) => setName(e.target.value)} placeholder="신청서에 적은 이름" />
+          </FormField>
+          <FormField label="연락처" required>
+            <FInput value={contact} onChange={(e) => setContact(e.target.value)} placeholder="010..." inputMode="tel" />
+          </FormField>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            행사 7일 전까지 100% 환불입니다. 요청 후 신청은 취소되며, 투표·참가가 중단됩니다.
+          </p>
+          <button onClick={submit} disabled={busy} className="w-full py-4 rounded-2xl font-semibold bg-primary text-primary-foreground disabled:opacity-50">
+            {busy ? "요청 중..." : "환불 요청하기"}
+          </button>
+        </div>
+      )}
+      <CsFooter />
     </div>
   );
 }

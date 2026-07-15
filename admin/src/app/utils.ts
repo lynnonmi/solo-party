@@ -60,6 +60,17 @@ export function getSmsKindLabel(status: AppStatus): string {
   return status === "rejected" ? "거절" : "승인";
 }
 
+export function statusLabel(status: AppStatus): string {
+  const map: Record<AppStatus, string> = {
+    pending: "대기",
+    approved: "승인",
+    rejected: "거절",
+    refund_requested: "환불 요청",
+    refunded: "환불 완료",
+  };
+  return map[status];
+}
+
 export function getProfilePhoto(app: Partial<Application>): string | null {
   return app.voteProfilePhoto || app.photos?.[0] || null;
 }

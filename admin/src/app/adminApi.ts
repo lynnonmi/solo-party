@@ -132,6 +132,19 @@ export const adminApi = {
     }
   },
 
+  async markRefundCompleted(id: string): Promise<void> {
+    const { error } = await getClient().rpc("admin_mark_refund_completed", { p_id: id });
+    if (error) {
+      if (error.message?.includes("unauthorized")) {
+        throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+      if (error.code === "PGRST202" || error.message?.includes("Could not find the function")) {
+        throw new Error("DB에 환불 완료 함수가 없습니다. npm run db:push 후 다시 시도해 주세요.");
+      }
+      throw new Error(error.message || "환불 완료 처리에 실패했습니다.");
+    }
+  },
+
   async sendSms(applicantId: string, text?: string, subject?: string): Promise<void> {
     const token = typeof window !== "undefined" ? localStorage.getItem(ADMIN_TOKEN_KEY) : null;
     if (!token) {

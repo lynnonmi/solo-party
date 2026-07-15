@@ -4,6 +4,8 @@ const STATUS_LABEL: Record<AppStatus, string> = {
   pending: "대기",
   approved: "승인",
   rejected: "거절",
+  refund_requested: "환불 요청",
+  refunded: "환불 완료",
 };
 
 export const EXPORT_HEADERS = [
