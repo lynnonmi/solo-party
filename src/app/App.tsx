@@ -367,7 +367,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const poll = setInterval(fetchGlobalSettings, 15000);
+    const poll = setInterval(fetchGlobalSettings, 45000);
     const onVisible = () => { if (document.visibilityState === "visible") fetchGlobalSettings(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearInterval(poll); document.removeEventListener("visibilitychange", onVisible); };

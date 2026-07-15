@@ -71,6 +71,29 @@ export function statusLabel(status: AppStatus): string {
   return map[status];
 }
 
+/** O(v+a) vote tally — avoids per-applicant filter/find loops */
+export function buildVoteLeaderboard(
+  approved: Application[],
+  votes: { voter_id: string; voted_for_id: string }[],
+  apps: { id: string; nickname: string }[],
+  unknownLabel = "?",
+) {
+  const nickById = new Map(apps.map(a => [a.id, a.nickname]));
+  const votersByTarget = new Map<string, string[]>();
+  for (const v of votes) {
+    const nick = nickById.get(v.voter_id) || unknownLabel;
+    const list = votersByTarget.get(v.voted_for_id);
+    if (list) list.push(nick);
+    else votersByTarget.set(v.voted_for_id, [nick]);
+  }
+  return approved
+    .map(a => {
+      const voters = votersByTarget.get(a.id) || [];
+      return { ...a, count: voters.length, voters };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
 /** 신청서와 동일: 2027년 기준 나이 → 연도 환산 */
 const AGE_YEAR_BASE = 2027;
 

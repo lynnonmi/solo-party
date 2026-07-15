@@ -109,6 +109,17 @@ async function fnExists(sql, name) {
   return exists;
 }
 
+async function fnBodyContains(sql, name, needle) {
+  const rows = await sql`
+    SELECT pg_get_functiondef(p.oid) AS def
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = ${name}
+    LIMIT 1
+  `;
+  return Boolean(rows[0]?.def?.includes(needle));
+}
+
 async function colExists(sql, table, column) {
   const [{ exists }] = await sql`
     SELECT EXISTS (
@@ -153,7 +164,21 @@ async function isAlreadyApplied(sql, file) {
     return fnExists(sql, "admin_mark_refund_completed");
   }
   if (file === "018_refund_cases.sql") {
-    return false; // CREATE OR REPLACE — baseline 스킵하지 않음
+    // 017: status IN ('pending','approved') / 018: status = 'approved' + reject clears votes
+    return (
+      (await fnBodyContains(sql, "request_refund", "status = 'approved'")) &&
+      (await fnBodyContains(sql, "admin_update_status", "DELETE FROM vote_votes"))
+    );
+  }
+  if (file === "019_vote_votes_voted_for_index.sql") {
+    const [{ exists }] = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND indexname = 'idx_vote_votes_voted_for'
+      ) AS exists
+    `;
+    return exists;
   }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;

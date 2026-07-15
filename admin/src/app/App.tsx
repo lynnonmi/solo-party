@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import {
-  ChevronDown, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Banknote, Trash2, X,
+  ChevronDown, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Banknote, Trash2, X, RefreshCw,
 } from "lucide-react";
 import { adminApi } from "./adminApi";
 import { FormField, FInput } from "./ui";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard } from "./utils";
 
 type View = "login" | "admin";
 
@@ -167,7 +167,18 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const pull = async () => {
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  };
+
+  useEffect(() => {
+    refresh();
+    const poll = setInterval(refresh, 30000);
+    return () => clearInterval(poll);
+  }, []);
 
   const updateStatus = async (id: string, status: AppStatus) => {
     try {
@@ -320,7 +331,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   }
 
   const approved = apps.filter(a => a.status === "approved");
-  const submittedCount = subs.length;
+  const submittedCount = new Set(subs.map(s => s.voter_id)).size;
   const statusColor: Record<AppStatus, string> = {
     pending: "text-amber-400 bg-amber-400/10 border-amber-400/30",
     approved: "text-green-400 bg-green-400/10 border-green-400/30",
@@ -352,7 +363,18 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     <div className="max-w-md mx-auto pb-16">
       <div className="px-4 pt-6 pb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">관리자 대시보드</h2>
-        <button onClick={() => { adminApi.logout(); onLogout(); }} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"><LogOut className="w-3.5 h-3.5" /> 나가기</button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => { void pull(); }}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+            aria-label="새로고침"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </button>
+          <button onClick={() => { adminApi.logout(); onLogout(); }} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"><LogOut className="w-3.5 h-3.5" /> 나가기</button>
+        </div>
       </div>
 
       <div className="px-4 flex gap-1.5 mb-4">
@@ -588,7 +610,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 현황</p>
             <div className="flex gap-4">
-              <div className="text-center flex-1"><p className="text-2xl font-bold text-primary">{submittedCount}</p><p className="text-xs text-muted-foreground mt-1">제출 완료</p></div>
+              <div className="text-center flex-1"><p className="text-2xl font-bold text-primary">{submittedCount}</p><p className="text-xs text-muted-foreground mt-1">투표 완료 인원</p></div>
               <div className="w-px bg-border" />
               <div className="text-center flex-1"><p className="text-2xl font-bold text-foreground">{approved.length}</p><p className="text-xs text-muted-foreground mt-1">총 승인 인원</p></div>
             </div>
@@ -597,9 +619,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 결과</p>
             <div className="space-y-2">
-              {approved
-                .map(a => ({ ...a, count: subs.filter(s => s.voted_for_id === a.id).length, voters: subs.filter(s => s.voted_for_id === a.id).map(s => apps.find(x => x.id === s.voter_id)?.nickname || "알 수 없음") }))
-                .sort((a,b) => b.count - a.count)
+              {buildVoteLeaderboard(approved, subs, apps, "알 수 없음")
                 .map((a,i) => (
                   <div key={a.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3.5 flex items-center gap-3">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${i===0?"bg-primary/20 text-primary":i===1?"bg-slate-400/20 text-slate-400":i===2?"bg-orange-600/20 text-orange-500":"bg-muted text-muted-foreground"}`}>{i+1}</div>
@@ -802,7 +822,17 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  const [refreshing, setRefreshing] = useState(false);
+  const pull = async () => {
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  };
+
+  useEffect(() => {
+    refresh();
+    const poll = setInterval(refresh, 30000);
+    return () => clearInterval(poll);
+  }, []);
 
   const updateStatus = async (id: string, status: AppStatus) => {
     try {
@@ -988,8 +1018,11 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     return "pending";
   };
 
-  const statusFilterCnt = (s: StatusFilter) =>
-    s === "전체" ? apps.length : apps.filter(a => a.status === s).length;
+  const statusFilterCnt = (s: StatusFilter) => {
+    if (s === "전체") return apps.length;
+    if (s === "refund") return apps.filter(a => a.status === "refund_requested" || a.status === "refunded").length;
+    return apps.filter(a => a.status === s).length;
+  };
 
   const navItems: [PCSection, string][] = [["applications","신청 관리"],["vote-management","투표 관리"],["matching","매칭 현황"]];
 
@@ -1020,7 +1053,19 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="px-5 py-3.5 border-b border-border flex items-center justify-between gap-4">
-                <h2 className="text-base font-semibold shrink-0 leading-none">신청 목록 ({filteredApps.length}명)</h2>
+                <div className="flex items-center gap-2 shrink-0">
+                  <h2 className="text-base font-semibold leading-none">신청 목록 ({filteredApps.length}명)</h2>
+                  <button
+                    type="button"
+                    onClick={() => { void pull(); }}
+                    disabled={refreshing}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+                    aria-label="목록 새로고침"
+                    title="새로고침"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
                 <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-medium text-muted-foreground shrink-0">성별</span>
@@ -1039,6 +1084,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       ["pending", "대기"],
                       ["approved", "승인"],
                       ["rejected", "거절"],
+                      ["refund", "환불"],
                       ["refund_requested", "환불요청"],
                       ["refunded", "환불완료"],
                     ] as const).map(([s, label]) => (
@@ -1226,8 +1272,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 </p>
               </div>
               <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <p className="text-2xl font-bold text-primary">{subs.length} <span className="text-sm font-normal text-muted-foreground">/ {approved.length}</span></p>
-                <p className="text-xs text-muted-foreground mt-1">투표 제출 현황</p>
+                <p className="text-2xl font-bold text-primary">{new Set(subs.map(s => s.voter_id)).size} <span className="text-sm font-normal text-muted-foreground">/ {approved.length}</span></p>
+                <p className="text-xs text-muted-foreground mt-1">투표 제출 인원</p>
               </div>
               <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
                 <p className="text-2xl font-bold text-primary">{matches.length}</p>
@@ -1259,8 +1305,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {approved.map(a => ({ ...a, count: subs.filter(s => s.voted_for_id === a.id).length, voters: subs.filter(s => s.voted_for_id === a.id).map(s => apps.find(x => x.id === s.voter_id)?.nickname || "?") }))
-                    .sort((a,b) => b.count - a.count)
+                  {buildVoteLeaderboard(approved, subs, apps)
                     .map((a,i) => (
                       <tr key={a.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-medium text-muted-foreground">{i+1}</td>
