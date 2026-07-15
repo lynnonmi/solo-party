@@ -19,7 +19,6 @@ export const EXPORT_HEADERS = [
   "직업 상세",
   "상태",
   "SMS 발송",
-  "입금 신청",
   "입금 확인",
   "제출 일시",
   "사진 1",
@@ -38,7 +37,7 @@ export const EXPORT_HEADERS = [
 ] as const;
 
 /** 1-based column indices for IMAGE() preview in Google Sheets */
-export const EXPORT_IMAGE_COLUMNS = [14, 15, 16, 17];
+export const EXPORT_IMAGE_COLUMNS = [13, 14, 15, 16];
 
 export function applicationToExportRow(app: Application): string[] {
   const photos = app.photos ?? [];
@@ -53,7 +52,6 @@ export function applicationToExportRow(app: Application): string[] {
     app.jobDetail ?? "",
     STATUS_LABEL[app.status],
     app.smsSent ? "발송" : "-",
-    app.feeConfirmed ? "예" : "아니오",
     app.depositConfirmed ? "확인" : "미확인",
     app.submittedAt ? new Date(app.submittedAt).toLocaleString("ko-KR") : "",
     photos[0] ?? "",

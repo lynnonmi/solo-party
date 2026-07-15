@@ -761,7 +761,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         celebrity: form.celebrity!.trim(), photos: uploadedUrls,
         refund_bank: form.refundBank!.trim(), refund_account: form.refundAccount!.trim(),
         status: "pending",
-        fee_confirmed: !!(form as Record<string, unknown>).feeConfirmed,
+        fee_confirmed: false,
       });
       if (insertErr) throw insertErr;
       go("success");
@@ -935,9 +935,9 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
           <FormField label="환불 계좌번호" required error={errors.refundAccount}>
             <FInput placeholder="숫자만 입력" value={form.refundAccount || ""} onChange={(e) => set("refundAccount", e.target.value)} />
           </FormField>
-          <CheckRow checked={!!(form as Record<string, unknown>).feeConfirmed}
-            onToggle={() => setForm((f) => ({ ...f, feeConfirmed: !(f as Record<string, unknown>).feeConfirmed } as Partial<FormData>))}
-            label={`참가비(${currentPrice()})를 입금하였습니다.`} />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            참가비 <span className="text-foreground font-medium">{currentPrice()}</span>를 안내 계좌로 입금해 주세요. 입금 확인은 운영진이 직접 처리합니다.
+          </p>
         </div>
       )}
 
