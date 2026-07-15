@@ -1002,38 +1002,35 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         {section === "applications" && (
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-border space-y-3">
-                <h2 className="text-base font-semibold">신청 목록 ({filteredApps.length}명)</h2>
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
-                    <p className="text-[10px] font-medium text-muted-foreground mb-1.5">성별</p>
-                    <div className="flex gap-1.5">
-                      {(["전체","남성","여성"] as GenderFilter[]).map(g => (
-                        <button key={g} onClick={() => setGFilter(g)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
-                          {g}
-                        </button>
-                      ))}
-                    </div>
+              <div className="px-5 py-3.5 border-b border-border flex items-center justify-between gap-4">
+                <h2 className="text-base font-semibold shrink-0 leading-none">신청 목록 ({filteredApps.length}명)</h2>
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-medium text-muted-foreground shrink-0">성별</span>
+                    {(["전체","남성","여성"] as GenderFilter[]).map(g => (
+                      <button key={g} onClick={() => setGFilter(g)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                        {g}
+                      </button>
+                    ))}
                   </div>
-                  <div className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
-                    <p className="text-[10px] font-medium text-muted-foreground mb-1.5">상태</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {([
-                        ["전체", "전체"],
-                        ["pending", "대기"],
-                        ["approved", "승인"],
-                        ["rejected", "거절"],
-                        ["refund_requested", "환불요청"],
-                        ["refunded", "환불완료"],
-                      ] as const).map(([s, label]) => (
-                        <button key={s} onClick={() => setSFilter(s)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
-                          {label}
-                          {s !== "전체" && <span className="ml-1 opacity-70">{statusFilterCnt(s)}</span>}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="w-px h-4 bg-border shrink-0 hidden sm:block" aria-hidden />
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <span className="text-[10px] font-medium text-muted-foreground shrink-0">상태</span>
+                    {([
+                      ["전체", "전체"],
+                      ["pending", "대기"],
+                      ["approved", "승인"],
+                      ["rejected", "거절"],
+                      ["refund_requested", "환불요청"],
+                      ["refunded", "환불완료"],
+                    ] as const).map(([s, label]) => (
+                      <button key={s} onClick={() => setSFilter(s)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                        {label}
+                        {s !== "전체" && <span className="ml-1 opacity-70">{statusFilterCnt(s)}</span>}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
