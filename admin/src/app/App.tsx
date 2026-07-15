@@ -330,9 +330,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     refunded: "text-muted-foreground bg-muted/40 border-border",
   };
   const cnt = (g: GenderFilter, s: AppStatus | "all") => apps.filter(a => (g === "전체" || a.gender === g) && (s === "all" || a.status === s)).length;
-  const filteredApps = apps.filter(a =>
-    (gFilter === "전체" || a.gender === gFilter) && (sFilter === "전체" || a.status === sFilter),
-  );
+  const filteredApps = apps.filter(a => {
+    if (gFilter !== "전체" && a.gender !== gFilter) return false;
+    if (sFilter === "전체") return true;
+    // 환불요청/완료는 상단 필터 없이 전체에서만 보임
+    if (sFilter === "rejected") return a.status === "rejected";
+    return a.status === sFilter;
+  });
 
   const getMatchStatusFromRow = (m: { user1_response: string; user2_response: string }): "pending" | "success" | "closed" => {
     if (m.user1_response === "not_going" || m.user2_response === "not_going") return "closed";
@@ -359,8 +363,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       {tab === "apps" && (
         <div className="px-4">
           <div className="flex gap-2 mb-3">
-            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"],["refund_requested","환불","text-sky-400"]] as const).map(([k,l,c]) => (
-              <div key={k} className="flex-1 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-1.5 py-2.5 text-center">
+            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"]] as const).map(([k,l,c]) => (
+              <div key={k} className="flex-1 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-2 py-2.5 text-center">
                 <p className={`text-lg font-bold leading-none ${c}`}>{cnt("전체", k)}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">{l}</p>
                 <p className="text-[9px] text-muted-foreground/60 mt-0.5">남{cnt("남성",k)} / 여{cnt("여성",k)}</p>
@@ -370,9 +374,9 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex gap-2 mb-2.5">
             {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
           </div>
-          <div className="flex gap-2 mb-2.5 flex-wrap">
-            {(["전체","pending","approved","rejected","refund_requested","refunded"] as StatusFilter[]).map(s => {
-              const lbl: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절", refund_requested: "환불요청", refunded: "환불완료" };
+          <div className="flex gap-2 mb-2.5">
+            {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
+              const lbl: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절" };
               return <button key={s} onClick={() => setSFilter(s)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{lbl[s]}</button>;
             })}
           </div>
@@ -417,20 +421,28 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                       <div className="text-xs text-muted-foreground border-t border-border pt-3 space-y-1">
                         <p>환불 계좌: {a.refundBank} {a.refundAccount}</p>
                         <p>입금 확인: {a.depositConfirmed ? "확인됨" : "미확인"}</p>
+                        {a.status === "rejected" && (
+                          <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
+                        )}
+                        {a.status === "refund_requested" && (
+                          <p className="text-sky-400/90 pt-1">승인 후 본인 환불 요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
+                        )}
                       </div>
                       {depositError && <p className="text-xs text-destructive">{depositError}</p>}
                       {refundError && <p className="text-xs text-destructive">{refundError}</p>}
-                      <button
-                        onClick={() => toggleDeposit(a.id, !a.depositConfirmed)}
-                        disabled={depositToggling}
-                        className={`w-full py-2.5 rounded-xl text-sm font-medium border flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${
-                          a.depositConfirmed
-                            ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
-                            : "border-primary/40 text-primary hover:bg-primary/8"
-                        }`}>
-                        <Banknote className="w-4 h-4" />
-                        {depositToggling ? "저장 중..." : a.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
-                      </button>
+                      {a.status !== "rejected" && a.status !== "refunded" && (
+                        <button
+                          onClick={() => toggleDeposit(a.id, !a.depositConfirmed)}
+                          disabled={depositToggling}
+                          className={`w-full py-2.5 rounded-xl text-sm font-medium border flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${
+                            a.depositConfirmed
+                              ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
+                              : "border-primary/40 text-primary hover:bg-primary/8"
+                          }`}>
+                          <Banknote className="w-4 h-4" />
+                          {depositToggling ? "저장 중..." : a.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
+                        </button>
+                      )}
                       {a.status === "refund_requested" && (
                         <button
                           onClick={() => markRefundDone(a.id)}
@@ -440,13 +452,10 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                           {refundActing ? "처리 중..." : "환불 완료로 표시"}
                         </button>
                       )}
-                      {a.status === "refunded" && (
-                        <p className="text-xs text-center text-muted-foreground py-1">환불 완료됨</p>
-                      )}
-                      {a.status !== "refund_requested" && a.status !== "refunded" && (
+                      {(a.status === "pending" || a.status === "approved") && (
                         <div className="flex gap-2 pt-1">
                           <button onClick={() => updateStatus(a.id,"approved")} disabled={a.status==="approved"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-40">승인</button>
-                          <button onClick={() => updateStatus(a.id,"rejected")} disabled={a.status==="rejected"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">거절</button>
+                          <button onClick={() => updateStatus(a.id,"rejected")} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors">거절</button>
                           <button onClick={() => updateStatus(a.id,"pending")} disabled={a.status==="pending"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-40">대기</button>
                         </div>
                       )}
@@ -921,7 +930,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   };
 
   const filteredApps = apps
-    .filter(a => (gFilter === "전체" || a.gender === gFilter) && (sFilter === "전체" || a.status === sFilter))
+    .filter(a => {
+      if (gFilter !== "전체" && a.gender !== gFilter) return false;
+      if (sFilter === "전체") return true;
+      if (sFilter === "rejected") return a.status === "rejected";
+      return a.status === sFilter;
+    })
     .sort((a, b) => {
       const va = (a as Record<string,any>)[sortBy] || "";
       const vb = (b as Record<string,any>)[sortBy] || "";
@@ -972,8 +986,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
                   </div>
                   <div className="flex gap-1.5">
-                    {(["전체","pending","approved","rejected","refund_requested","refunded"] as StatusFilter[]).map(s => {
-                      const l: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절", refund_requested: "환불요청", refunded: "환불완료" };
+                    {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
+                      const l: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절" };
                       return <button key={s} onClick={() => setSFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{l[s]}</button>;
                     })}
                   </div>
@@ -1047,22 +1061,30 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         {selected.depositConfirmed ? "확인됨" : "미확인"}
                       </span>
                     </div>
+                    {selected.status === "rejected" && (
+                      <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
+                    )}
+                    {selected.status === "refund_requested" && (
+                      <p className="text-sky-400/90 pt-1">승인 후 본인 환불 요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
+                    )}
                   </div>
                 </div>
                 <div className="p-4 border-t border-border space-y-2">
                   {depositError && <p className="text-xs text-destructive">{depositError}</p>}
                   {refundError && <p className="text-xs text-destructive">{refundError}</p>}
-                  <button
-                    onClick={() => toggleDeposit(selected.id, !selected.depositConfirmed)}
-                    disabled={depositToggling}
-                    className={`w-full py-2 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-                      selected.depositConfirmed
-                        ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
-                        : "border-primary/40 text-primary hover:bg-primary/8"
-                    }`}>
-                    <Banknote className="w-3.5 h-3.5" />
-                    {depositToggling ? "저장 중..." : selected.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
-                  </button>
+                  {selected.status !== "rejected" && selected.status !== "refunded" && (
+                    <button
+                      onClick={() => toggleDeposit(selected.id, !selected.depositConfirmed)}
+                      disabled={depositToggling}
+                      className={`w-full py-2 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                        selected.depositConfirmed
+                          ? "border-green-500/40 text-green-400 hover:bg-green-400/10"
+                          : "border-primary/40 text-primary hover:bg-primary/8"
+                      }`}>
+                      <Banknote className="w-3.5 h-3.5" />
+                      {depositToggling ? "저장 중..." : selected.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
+                    </button>
+                  )}
                   {selected.status === "refund_requested" && (
                     <button
                       onClick={() => markRefundDone(selected.id)}
@@ -1072,13 +1094,10 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       {refundActing ? "처리 중..." : "환불 완료로 표시"}
                     </button>
                   )}
-                  {selected.status === "refunded" && (
-                    <p className="text-xs text-center text-muted-foreground py-1">환불 완료됨</p>
-                  )}
-                  {selected.status !== "refund_requested" && selected.status !== "refunded" && (
+                  {(selected.status === "pending" || selected.status === "approved") && (
                     <div className="flex gap-2">
                       <button onClick={() => updateStatus(selected.id,"approved")} disabled={selected.status==="approved"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 disabled:opacity-40">승인</button>
-                      <button onClick={() => updateStatus(selected.id,"rejected")} disabled={selected.status==="rejected"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-40">거절</button>
+                      <button onClick={() => updateStatus(selected.id,"rejected")} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10">거절</button>
                       <button onClick={() => updateStatus(selected.id,"pending")} disabled={selected.status==="pending"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 disabled:opacity-40">대기</button>
                     </div>
                   )}

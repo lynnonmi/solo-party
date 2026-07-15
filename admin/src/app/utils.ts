@@ -64,7 +64,7 @@ export function statusLabel(status: AppStatus): string {
   const map: Record<AppStatus, string> = {
     pending: "대기",
     approved: "승인",
-    rejected: "거절",
+    rejected: "거절·환불완료",
     refund_requested: "환불 요청",
     refunded: "환불 완료",
   };

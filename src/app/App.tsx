@@ -1796,7 +1796,7 @@ function MyApplicationPage({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const canRefund = voter.status === "pending" || voter.status === "approved";
+  const canRefund = voter.status === "approved";
 
   const requestRefund = async () => {
     setBusy(true);
@@ -1931,7 +1931,7 @@ function RefundRequestPage({ go }: { go: (v: View) => void }) {
           </FormField>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <p className="text-xs text-muted-foreground leading-relaxed">
-            행사 7일 전까지 100% 환불입니다. 요청 후 신청은 취소되며, 투표·참가가 중단됩니다.
+            행사 7일 전까지, <strong className="text-foreground font-medium">승인된 신청</strong>만 환불 요청할 수 있습니다. 요청 후 참가·투표는 중단됩니다.
           </p>
           <button onClick={submit} disabled={busy} className="w-full py-4 rounded-2xl font-semibold bg-primary text-primary-foreground disabled:opacity-50">
             {busy ? "요청 중..." : "환불 요청하기"}
