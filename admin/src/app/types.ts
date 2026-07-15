@@ -1,7 +1,7 @@
 export type Gender = "남성" | "여성";
 export type AppStatus = "pending" | "approved" | "rejected" | "refund_requested" | "refunded";
 export type GenderFilter = "전체" | "남성" | "여성";
-export type StatusFilter = "전체" | "pending" | "approved" | "rejected" | "refund_requested" | "refunded";
+export type StatusFilter = "전체" | "pending" | "approved" | "rejected" | "refund_requested" | "refunded" | "refund";
 export type AdminTab = "apps" | "vote" | "matching";
 export type PCSection = "applications" | "vote-management" | "matching";
 

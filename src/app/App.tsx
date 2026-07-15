@@ -7,7 +7,10 @@ import {
   Camera
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
-import posterImage from "@/imports/Group_5_mobile.webp";
+
+const POSTER_SRC = "/poster.webp";
+const POSTER_W = 480;
+const POSTER_H = 656;
 
 /* ═══════════════════════════════════════════
    SUPABASE CLIENT
@@ -297,57 +300,66 @@ export default function App() {
 
   useEffect(() => {
     const initApp = async () => {
-      const currentSettings = await fetchGlobalSettings();
       const savedToken = localStorage.getItem("sp_voter_token");
-      
-      if (savedToken) {
-        try {
-          const { data, error } = await getSupabase(savedToken).rpc("get_my_application");
-          if (data && data.length > 0 && !error) {
-            const row = data[0];
-            const app: Application = {
-              id: row.id,
-              name: row.name || "",
-              gender: row.gender as Gender,
-              age: String(row.age || ""),
-              nickname: row.nickname || "",
-              mbti: row.mbti || "",
-              contact: row.contact || "",
-              job: row.job || "",
-              jobDetail: row.job_detail,
-              currentWork: row.current_work || "",
-              lifeGoal: row.life_goal || "",
-              hobbies: row.alone_time || "",
-              instagram: row.instagram || "",
-              idealType: row.ideal_type || "",
-              charm: row.charm || "",
-              celebrity: row.celebrity || "",
-              photos: row.photos || [],
-              voteProfilePhoto: row.vote_profile_photo || undefined,
-              refundBank: row.refund_bank || "",
-              refundAccount: row.refund_account || "",
-              status: row.status as AppStatus,
-              submittedAt: row.submitted_at || "",
-            };
-            setVoter(app);
-            setSessionToken(savedToken);
 
-            const voteSettings: VoteSettings = {
-              isOpen: currentSettings?.is_open ?? false,
-              isClosed: currentSettings?.is_closed ?? false,
-              closedAt: currentSettings?.closed_at,
-              maleOpen: currentSettings?.male_open ?? true,
-              femaleOpen: currentSettings?.female_open ?? true,
-            };
-            setView(resolveVoteView(app, voteSettings) ?? "home");
-          } else {
-            localStorage.removeItem("sp_voter_token");
-          }
-        } catch {
-          localStorage.removeItem("sp_voter_token");
+      // 토큰 없으면 홈을 바로 띄우고 설정만 백그라운드 로드 (포스터 지연 방지)
+      if (!savedToken) {
+        setAppLoading(false);
+        const currentSettings = await fetchGlobalSettings();
+        if (currentSettings?.is_open || currentSettings?.is_closed) {
+          setView("vote-login");
         }
-      } else if (currentSettings?.is_open || currentSettings?.is_closed) {
-        setView("vote-login");
+        return;
+      }
+
+      const currentSettings = await fetchGlobalSettings();
+      try {
+        const { data, error } = await getSupabase(savedToken).rpc("get_my_application");
+        if (data && data.length > 0 && !error) {
+          const row = data[0];
+          const app: Application = {
+            id: row.id,
+            name: row.name || "",
+            gender: row.gender as Gender,
+            age: String(row.age || ""),
+            nickname: row.nickname || "",
+            mbti: row.mbti || "",
+            contact: row.contact || "",
+            job: row.job || "",
+            jobDetail: row.job_detail,
+            currentWork: row.current_work || "",
+            lifeGoal: row.life_goal || "",
+            hobbies: row.alone_time || "",
+            instagram: row.instagram || "",
+            idealType: row.ideal_type || "",
+            charm: row.charm || "",
+            celebrity: row.celebrity || "",
+            photos: row.photos || [],
+            voteProfilePhoto: row.vote_profile_photo || undefined,
+            refundBank: row.refund_bank || "",
+            refundAccount: row.refund_account || "",
+            status: row.status as AppStatus,
+            submittedAt: row.submitted_at || "",
+          };
+          setVoter(app);
+          setSessionToken(savedToken);
+
+          const voteSettings: VoteSettings = {
+            isOpen: currentSettings?.is_open ?? false,
+            isClosed: currentSettings?.is_closed ?? false,
+            closedAt: currentSettings?.closed_at,
+            maleOpen: currentSettings?.male_open ?? true,
+            femaleOpen: currentSettings?.female_open ?? true,
+          };
+          setView(resolveVoteView(app, voteSettings) ?? "home");
+        } else {
+          localStorage.removeItem("sp_voter_token");
+          if (currentSettings?.is_open || currentSettings?.is_closed) {
+            setView("vote-login");
+          }
+        }
+      } catch {
+        localStorage.removeItem("sp_voter_token");
       }
       setAppLoading(false);
     };
@@ -532,11 +544,11 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
       <div className="max-w-md mx-auto min-h-screen flex flex-col justify-center px-4 pb-16">
         <div className="w-full flex justify-center pb-6">
           <ImageWithFallback
-            src={posterImage}
+            src={POSTER_SRC}
             alt="THE SECOND SOLO PARTY"
             className="w-full max-w-xs object-contain"
-            width={658}
-            height={900}
+            width={POSTER_W}
+            height={POSTER_H}
             decoding="async"
             fetchPriority="high"
             loading="eager"
@@ -552,11 +564,11 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
     <div className="max-w-md mx-auto pb-16">
       <div className="w-full flex justify-center bg-background pt-6 pb-2 px-6">
         <ImageWithFallback
-          src={posterImage}
+          src={POSTER_SRC}
           alt="THE SECOND SOLO PARTY"
           className="w-full max-w-xs object-contain"
-          width={658}
-          height={900}
+          width={POSTER_W}
+          height={POSTER_H}
           decoding="async"
           fetchPriority="high"
           loading="eager"

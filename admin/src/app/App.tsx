@@ -328,10 +328,17 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     refund_requested: "text-sky-400 bg-sky-400/10 border-sky-400/30",
     refunded: "text-muted-foreground bg-muted/40 border-border",
   };
-  const cnt = (g: GenderFilter, s: AppStatus | "all") => apps.filter(a => (g === "전체" || a.gender === g) && (s === "all" || a.status === s)).length;
+  const cnt = (g: GenderFilter, s: AppStatus | "all" | "refund") =>
+    apps.filter(a => {
+      if (g !== "전체" && a.gender !== g) return false;
+      if (s === "all") return true;
+      if (s === "refund") return a.status === "refund_requested" || a.status === "refunded";
+      return a.status === s;
+    }).length;
   const filteredApps = apps.filter(a => {
     if (gFilter !== "전체" && a.gender !== gFilter) return false;
     if (sFilter === "전체") return true;
+    if (sFilter === "refund") return a.status === "refund_requested" || a.status === "refunded";
     return a.status === sFilter;
   });
 
@@ -360,12 +367,21 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       {tab === "apps" && (
         <div className="px-4">
           <div className="flex gap-2 mb-3">
-            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"],["refund_requested","환불","text-sky-400"]] as const).map(([k,l,c]) => (
-              <div key={k} className="flex-1 min-w-0 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-1 py-2.5 text-center">
+            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"],["refund","환불","text-sky-400"]] as const).map(([k,l,c]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  if (k === "all") setSFilter("전체");
+                  else if (k === "refund") setSFilter("refund");
+                  else setSFilter(k);
+                }}
+                className="flex-1 min-w-0 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-1 py-2.5 text-center"
+              >
                 <p className={`text-base font-bold leading-none ${c}`}>{cnt("전체", k)}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">{l}</p>
                 <p className="text-[9px] text-muted-foreground/60 mt-0.5">남{cnt("남성",k)} / 여{cnt("여성",k)}</p>
-              </div>
+              </button>
             ))}
           </div>
           <div className="mb-3 space-y-2">
@@ -954,6 +970,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     .filter(a => {
       if (gFilter !== "전체" && a.gender !== gFilter) return false;
       if (sFilter === "전체") return true;
+      if (sFilter === "refund") return a.status === "refund_requested" || a.status === "refunded";
       return a.status === sFilter;
     })
     .sort((a, b) => {
