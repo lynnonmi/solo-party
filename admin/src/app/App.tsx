@@ -4,11 +4,10 @@ import {
 } from "lucide-react";
 import { adminApi } from "./adminApi";
 import { FormField, FInput } from "./ui";
-import { GoogleSheetsActions } from "./GoogleSheetsActions";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge } from "./utils";
 
 type View = "login" | "admin";
 
@@ -333,8 +332,6 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const filteredApps = apps.filter(a => {
     if (gFilter !== "전체" && a.gender !== gFilter) return false;
     if (sFilter === "전체") return true;
-    // 환불요청/완료는 상단 필터 없이 전체에서만 보임
-    if (sFilter === "rejected") return a.status === "rejected";
     return a.status === sFilter;
   });
 
@@ -363,24 +360,48 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       {tab === "apps" && (
         <div className="px-4">
           <div className="flex gap-2 mb-3">
-            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"]] as const).map(([k,l,c]) => (
-              <div key={k} className="flex-1 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-2 py-2.5 text-center">
-                <p className={`text-lg font-bold leading-none ${c}`}>{cnt("전체", k)}</p>
+            {([["all","전체","text-foreground"],["pending","대기","text-amber-400"],["approved","승인","text-green-400"],["rejected","거절","text-destructive"],["refund_requested","환불","text-sky-400"]] as const).map(([k,l,c]) => (
+              <div key={k} className="flex-1 min-w-0 bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-1 py-2.5 text-center">
+                <p className={`text-base font-bold leading-none ${c}`}>{cnt("전체", k)}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">{l}</p>
                 <p className="text-[9px] text-muted-foreground/60 mt-0.5">남{cnt("남성",k)} / 여{cnt("여성",k)}</p>
               </div>
             ))}
           </div>
-          <div className="flex gap-2 mb-2.5">
-            {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
+          <div className="mb-3 space-y-2">
+            <div className="rounded-xl border border-border bg-secondary/20 p-2.5">
+              <p className="text-[10px] font-medium text-muted-foreground mb-1.5 tracking-wide">성별</p>
+              <div className="flex gap-2">
+                {(["전체","남성","여성"] as GenderFilter[]).map(g => (
+                  <button key={g} onClick={() => setGFilter(g)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-secondary/20 p-2.5">
+              <p className="text-[10px] font-medium text-muted-foreground mb-1.5 tracking-wide">상태</p>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  ["전체", "전체"],
+                  ["pending", "대기"],
+                  ["approved", "승인"],
+                  ["rejected", "거절"],
+                  ["refund_requested", "환불요청"],
+                  ["refunded", "환불완료"],
+                ] as const).map(([s, label]) => (
+                  <button key={s} onClick={() => setSFilter(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                    {label}
+                    {s !== "전체" && (
+                      <span className="ml-1 opacity-70">{cnt("전체", s)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2 mb-2.5">
-            {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
-              const lbl: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절" };
-              return <button key={s} onClick={() => setSFilter(s)} className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{lbl[s]}</button>;
-            })}
-          </div>
-          <GoogleSheetsActions apps={filteredApps} compact />
           <div className="space-y-2">
             {!filteredApps.length && <p className="text-center text-muted-foreground text-sm py-12">신청서가 없습니다.</p>}
             {filteredApps.map((a) => {
@@ -395,7 +416,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                         {a.smsSent && <MessageSquare className="w-3 h-3 text-green-400" />}
                         {a.depositConfirmed && <Banknote className="w-3 h-3 text-green-400" />}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {a.age}세 · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {formatAge(a.age)} · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
                     </div>
                     <span className={`text-xs font-medium px-2 py-1 rounded-full border shrink-0 ${statusColor[a.status]}`}>{statusLabel(a.status)}</span>
                     {open ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
@@ -425,7 +446,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                           <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
                         )}
                         {a.status === "refund_requested" && (
-                          <p className="text-sky-400/90 pt-1">승인 후 본인 환불 요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
+                          <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
                         )}
                       </div>
                       {depositError && <p className="text-xs text-destructive">{depositError}</p>}
@@ -933,7 +954,6 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     .filter(a => {
       if (gFilter !== "전체" && a.gender !== gFilter) return false;
       if (sFilter === "전체") return true;
-      if (sFilter === "rejected") return a.status === "rejected";
       return a.status === sFilter;
     })
     .sort((a, b) => {
@@ -950,6 +970,9 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     if (m.user1_response === "going" && m.user2_response === "going") return "success";
     return "pending";
   };
+
+  const statusFilterCnt = (s: StatusFilter) =>
+    s === "전체" ? apps.length : apps.filter(a => a.status === s).length;
 
   const navItems: [PCSection, string][] = [["applications","신청 관리"],["vote-management","투표 관리"],["matching","매칭 현황"]];
 
@@ -979,19 +1002,39 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         {section === "applications" && (
           <div className="flex flex-1 overflow-hidden">
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-5 border-b border-border flex items-center justify-between">
+              <div className="p-5 border-b border-border space-y-3">
                 <h2 className="text-base font-semibold">신청 목록 ({filteredApps.length}명)</h2>
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    {(["전체","남성","여성"] as GenderFilter[]).map(g => <button key={g} onClick={() => setGFilter(g)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{g}</button>)}
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
+                    <p className="text-[10px] font-medium text-muted-foreground mb-1.5">성별</p>
+                    <div className="flex gap-1.5">
+                      {(["전체","남성","여성"] as GenderFilter[]).map(g => (
+                        <button key={g} onClick={() => setGFilter(g)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${gFilter===g?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                          {g}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex gap-1.5">
-                    {(["전체","pending","approved","rejected"] as StatusFilter[]).map(s => {
-                      const l: Record<string, string> = { 전체: "전체", pending: "대기", approved: "승인", rejected: "거절" };
-                      return <button key={s} onClick={() => setSFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>{l[s]}</button>;
-                    })}
+                  <div className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
+                    <p className="text-[10px] font-medium text-muted-foreground mb-1.5">상태</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ["전체", "전체"],
+                        ["pending", "대기"],
+                        ["approved", "승인"],
+                        ["rejected", "거절"],
+                        ["refund_requested", "환불요청"],
+                        ["refunded", "환불완료"],
+                      ] as const).map(([s, label]) => (
+                        <button key={s} onClick={() => setSFilter(s)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${sFilter===s?"border-primary bg-primary/12 text-primary":"border-border text-muted-foreground"}`}>
+                          {label}
+                          {s !== "전체" && <span className="ml-1 opacity-70">{statusFilterCnt(s)}</span>}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <GoogleSheetsActions apps={filteredApps} />
                 </div>
               </div>
               <div className="flex-1 overflow-auto">
@@ -1014,7 +1057,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         className={`border-b border-border cursor-pointer transition-colors hover:bg-secondary/50 ${selected?.id === a.id ? "bg-primary/8" : ""}`}>
                         <td className="px-4 py-3 font-medium">{a.name}</td>
                         <td className="px-4 py-3 text-muted-foreground">{a.gender}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.age}세</td>
+                        <td className="px-4 py-3 text-muted-foreground">{formatAge(a.age)}</td>
                         <td className="px-4 py-3">{a.nickname}</td>
                         <td className="px-4 py-3 text-muted-foreground">{a.contact}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{a.job}</td>
@@ -1046,7 +1089,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     </div>
                   )}
                   <div className="space-y-2">
-                    {([["성별",selected.gender],["나이",selected.age+"세"],["MBTI",selected.mbti],["닉네임",selected.nickname],["연락처",selected.contact],["인스타",`@${selected.instagram}`],["닮은꼴",selected.celebrity]] as [string,string][]).map(([l,v])=>(
+                    {([["성별",selected.gender],["나이",formatAge(selected.age)],["MBTI",selected.mbti],["닉네임",selected.nickname],["연락처",selected.contact],["인스타",`@${selected.instagram}`],["닮은꼴",selected.celebrity]] as [string,string][]).map(([l,v])=>(
                       <div key={l} className="flex justify-between gap-3"><span className="text-muted-foreground shrink-0">{l}</span><span className="text-right break-all">{v}</span></div>
                     ))}
                   </div>
@@ -1065,7 +1108,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
                     )}
                     {selected.status === "refund_requested" && (
-                      <p className="text-sky-400/90 pt-1">승인 후 본인 환불 요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
+                      <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
                     )}
                   </div>
                 </div>

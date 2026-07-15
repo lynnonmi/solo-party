@@ -65,10 +65,26 @@ export function statusLabel(status: AppStatus): string {
     pending: "대기",
     approved: "승인",
     rejected: "거절·환불완료",
-    refund_requested: "환불 요청",
-    refunded: "환불 완료",
+    refund_requested: "환불요청",
+    refunded: "환불완료",
   };
   return map[status];
+}
+
+/** 신청서와 동일: 2027년 기준 나이 → 연도 환산 */
+const AGE_YEAR_BASE = 2027;
+
+export function birthYearFromAge(age: string | number): number | null {
+  const n = typeof age === "number" ? age : parseInt(String(age), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return AGE_YEAR_BASE - n;
+}
+
+export function formatAge(age: string | number): string {
+  const n = typeof age === "number" ? age : parseInt(String(age), 10);
+  if (!Number.isFinite(n) || n <= 0) return String(age || "-");
+  const birth = birthYearFromAge(n);
+  return birth ? `${n}세 (${birth}년생)` : `${n}세`;
 }
 
 export function getProfilePhoto(app: Partial<Application>): string | null {
