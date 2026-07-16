@@ -7,7 +7,8 @@ import { FormField, FInput } from "./ui";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, LoungeEntryCheck } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard } from "./utils";
+import { LoungeEntryCheck } from "./LoungeEntryCheck";
 
 type View = "login" | "admin";
 
