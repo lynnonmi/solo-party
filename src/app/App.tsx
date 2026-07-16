@@ -7,7 +7,6 @@ import {
   Camera
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
-import { Checkbox } from "@/app/components/ui/checkbox";
 
 const POSTER_SRC = "/poster.webp";
 const POSTER_W = 480;
@@ -1486,7 +1485,6 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const [matches,     setMatches]     = useState<Match[]>([]);
   const [matchApps,   setMatchApps]   = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
   const [loading,     setLoading]     = useState(true);
-  const [respondingMatchId, setRespondingMatchId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -1547,22 +1545,17 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   }).filter(x => x.other);
 
   const respond = async (matchId: string, isUser1: boolean, response: "going" | "not-going") => {
-    setRespondingMatchId(matchId);
-    try {
-      const sbResponse = response === "not-going" ? "not_going" : "going";
-      const { error } = await sb.rpc("update_lounge_response", {
-        p_match_id: matchId,
-        p_response: sbResponse,
-      });
-      if (!error) {
-        setMatches(prev => prev.map(m => {
-          if (m.id !== matchId) return m;
-          return isUser1 ? { ...m, user1Response: response as MatchResponse }
-                         : { ...m, user2Response: response as MatchResponse };
-        }));
-      }
-    } finally {
-      setRespondingMatchId(null);
+    const sbResponse = response === "not-going" ? "not_going" : "going";
+    const { error } = await sb.rpc("update_lounge_response", {
+      p_match_id: matchId,
+      p_response: sbResponse,
+    });
+    if (!error) {
+      setMatches(prev => prev.map(m => {
+        if (m.id !== matchId) return m;
+        return isUser1 ? { ...m, user1Response: response as MatchResponse }
+                       : { ...m, user2Response: response as MatchResponse };
+      }));
     }
   };
 
@@ -1656,11 +1649,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-2">
             <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 라운지에 입장하시겠어요?</p>
           </div>
-          {myMatches.map(({ m, other, myR, theirR, isUser1, status }, idx) => {
+          {myMatches.map(({ m, other, myR, theirR, isUser1, status }) => {
             if (!other) return null;
             const otherPhoto = other.voteProfilePhoto ?? null;
-            const myGoing = myR === "going";
-            const checkboxDisabled = respondingMatchId === m.id || status !== "pending" || myR !== "pending";
             return (
               <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
@@ -1677,27 +1668,6 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                 </div>
 
                 <div className="border-t border-border px-4 py-3">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">
-                        {idx + 1}
-                      </div>
-                      <p className="text-xs font-medium text-muted-foreground">순서</p>
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox
-                        checked={myGoing}
-                        disabled={checkboxDisabled}
-                        onCheckedChange={(v) => {
-                          if (checkboxDisabled) return;
-                          const next = v === true ? "going" : "not-going";
-                          void respond(m.id, isUser1, next);
-                        }}
-                        aria-label="라운지 입장"
-                      />
-                      <span className="text-sm text-muted-foreground">라운지 입장</span>
-                    </label>
-                  </div>
                   {status === "success" ? (
                     <div className="text-center py-2">
                       <p className="text-sm font-semibold text-primary mb-1">매칭 성사!</p>
@@ -1708,14 +1678,19 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                       <p className="text-sm text-muted-foreground">이 매칭은 종료되었습니다.</p>
                     </div>
                   ) : myR === "pending" ? (
-                    <div className="text-center py-1">
-                      <p className="text-xs text-muted-foreground">체크박스로 라운지 입장 여부를 선택해 주세요.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => respond(m.id, isUser1, "going")}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
+                        라운지 입장
+                      </button>
+                      <button onClick={() => respond(m.id, isUser1, "not-going")}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">
+                        거절
+                      </button>
                     </div>
                   ) : (
                     <div className="text-center py-1">
-                      <p className="text-xs text-muted-foreground">
-                        {myGoing ? "라운지 입장 선택 완료. " : "거절 선택 완료. "}상대방의 응답을 기다리는 중입니다.
-                      </p>
+                      <p className="text-xs text-muted-foreground">상대방의 응답을 기다리는 중입니다.</p>
                     </div>
                   )}
                 </div>

@@ -7,7 +7,7 @@ import { FormField, FInput } from "./ui";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, LoungeEntryCheck } from "./utils";
 
 type View = "login" | "admin";
 
@@ -640,7 +640,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         <div className="px-4 space-y-3">
           {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 text-center"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
           {matches.length === 0 && settings.is_closed && <p className="text-center text-muted-foreground text-sm py-12">매칭된 쌍이 없습니다.</p>}
-          {matches.map((m) => {
+          {matches.map((m, idx) => {
             const u1 = apps.find(a => a.id === m.user1_id);
             const u2 = apps.find(a => a.id === m.user2_id);
             const st = getMatchStatusFromRow(m);
@@ -648,6 +648,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
             return (
               <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
+                  <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                    {idx + 1}
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">매칭 {idx + 1}번</p>
+                  <span className={`ml-auto text-xs font-medium ${stColor[st]}`}>{stLabel[st]}</span>
+                </div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex-1 text-center">
                     <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">{u1 && getProfilePhoto(u1) ? <img src={getProfilePhoto(u1)!} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-muted" />}</div>
@@ -659,9 +666,15 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                     <p className="text-xs font-medium mt-1">{u2?.nickname}</p>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-xs border-t border-border pt-3">
-                  <span className="text-muted-foreground">응답: {m.user1_response === "going" ? "간다" : m.user1_response === "not_going" ? "안 간다" : "대기"} / {m.user2_response === "going" ? "간다" : m.user2_response === "not_going" ? "안 간다" : "대기"}</span>
-                  <span className={`font-medium ${stColor[st]}`}>{stLabel[st]}</span>
+                <div className="grid grid-cols-2 gap-3 bg-secondary/20 border border-border rounded-xl p-3">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1.5">참가자 1 라운지</p>
+                    <LoungeEntryCheck response={m.user1_response} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-1.5">참가자 2 라운지</p>
+                    <LoungeEntryCheck response={m.user2_response} />
+                  </div>
                 </div>
               </div>
             );
@@ -1326,38 +1339,42 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex-1 overflow-y-auto p-6">
             <h2 className="text-base font-semibold mb-5">매칭 현황 ({matches.length}쌍)</h2>
             {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
-            <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">참가자 1</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">참가자 2</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">응답 1</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">응답 2</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">상태</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">계산 시각</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matches.map(m => {
-                    const u1 = apps.find(a => a.id === m.user1_id);
-                    const u2 = apps.find(a => a.id === m.user2_id);
-                    const st = getMatchStatusFromRow(m);
-                    const rLabel: Record<string,string> = { pending: "-", going: "간다", not_going: "안 간다" };
-                    const stEl = { pending: <span className="text-amber-400 text-xs font-medium">대기 중</span>, success: <span className="text-green-400 text-xs font-medium">매칭 성사</span>, closed: <span className="text-muted-foreground text-xs">종료</span> };
-                    return (
-                      <tr key={m.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3">{u1?.nickname || "-"}</td>
-                        <td className="px-4 py-3">{u2?.nickname || "-"}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{rLabel[m.user1_response]}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{rLabel[m.user2_response]}</td>
-                        <td className="px-4 py-3">{stEl[st]}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(m.calculated_at).toLocaleString("ko-KR")}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {matches.map((m, idx) => {
+                const u1 = apps.find(a => a.id === m.user1_id);
+                const u2 = apps.find(a => a.id === m.user2_id);
+                const st = getMatchStatusFromRow(m);
+                const stEl = { pending: <span className="text-amber-400 text-xs font-medium">대기 중</span>, success: <span className="text-green-400 text-xs font-medium">매칭 성사</span>, closed: <span className="text-muted-foreground text-xs">종료</span> };
+                return (
+                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">매칭 {idx + 1}번</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {u1?.nickname || "-"} · {u2?.nickname || "-"}
+                        </p>
+                      </div>
+                      {stEl[st]}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 px-4 py-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">{u1?.nickname || "참가자 1"}</p>
+                        <LoungeEntryCheck response={m.user1_response} />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">{u2?.nickname || "참가자 2"}</p>
+                        <LoungeEntryCheck response={m.user2_response} />
+                      </div>
+                    </div>
+                    <div className="px-4 py-2.5 border-t border-border text-xs text-muted-foreground">
+                      계산 시각: {new Date(m.calculated_at).toLocaleString("ko-KR")}
+                    </div>
+                  </div>
+                );
+              })}
               {!matches.length && <p className="text-center text-muted-foreground text-sm py-8">매칭 데이터가 없습니다.</p>}
             </div>
           </div>
