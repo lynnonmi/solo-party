@@ -664,20 +664,22 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
             return (
               <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-2.5">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                     {idx + 1}
                   </div>
-                  <p className="text-[11px] font-medium truncate flex-1 min-w-0 leading-tight">
-                    {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
-                  </p>
-                  <span className={`text-[10px] font-medium shrink-0 ${stColor[st]}`}>{stLabel[st]}</span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate leading-tight">
+                      {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
+                    </p>
+                    <LoungeEntryCheck
+                      checked={m.lounge_entered}
+                      disabled={loungeTogglingId === m.id}
+                      onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                    />
+                  </div>
+                  <span className={`text-xs font-medium shrink-0 ${stColor[st]}`}>{stLabel[st]}</span>
                 </div>
-                <LoungeEntryCheck
-                  checked={m.lounge_entered}
-                  disabled={loungeTogglingId === m.id}
-                  onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
-                />
               </div>
             );
           })}
@@ -1361,23 +1363,25 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 const maleApp = u1?.gender === "남성" ? u1 : u2;
                 const femaleApp = u1?.gender === "여성" ? u1 : u2;
                 const st = getMatchStatusFromRow(m);
-                const stEl = { pending: <span className="text-amber-400 text-[11px] font-medium">대기</span>, success: <span className="text-green-400 text-[11px] font-medium">성사</span>, closed: <span className="text-muted-foreground text-[11px]">종료</span> };
+                const stEl = { pending: <span className="text-amber-400 text-sm font-medium">대기</span>, success: <span className="text-green-400 text-sm font-medium">성사</span>, closed: <span className="text-muted-foreground text-sm">종료</span> };
                 return (
                   <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
                         {idx + 1}
                       </div>
-                      <p className="text-xs font-medium truncate flex-1 min-w-0 leading-tight">
-                        {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
-                      </p>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <p className="text-base font-semibold truncate leading-tight">
+                          {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
+                        </p>
+                        <LoungeEntryCheck
+                          checked={m.lounge_entered}
+                          disabled={loungeTogglingId === m.id}
+                          onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                        />
+                      </div>
                       {stEl[st]}
                     </div>
-                    <LoungeEntryCheck
-                      checked={m.lounge_entered}
-                      disabled={loungeTogglingId === m.id}
-                      onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
-                    />
                   </div>
                 );
               })}

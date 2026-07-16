@@ -15,18 +15,18 @@ export function LoungeEntryCheck({
       type="button"
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
-      className="inline-flex items-center gap-1.5 disabled:opacity-50 transition-opacity hover:opacity-90"
+      className="inline-flex items-center gap-2 disabled:opacity-50 transition-opacity hover:opacity-90 shrink-0"
       aria-checked={checked}
       role="checkbox"
     >
       <div
-        className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+        className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${
           checked ? "bg-primary border-primary text-primary-foreground" : "border-border"
         }`}
       >
-        {checked && <Check className="w-3 h-3" />}
+        {checked && <Check className="w-3.5 h-3.5" />}
       </div>
-      <span className={`text-xs ${checked ? "text-primary" : "text-muted-foreground"}`}>
+      <span className={`text-sm font-medium whitespace-nowrap ${checked ? "text-primary" : "text-muted-foreground"}`}>
         {checked ? "입장 완료" : "미입장"}
       </span>
     </button>
