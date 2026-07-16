@@ -644,6 +644,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
           {matches.map((m, idx) => {
             const u1 = apps.find(a => a.id === m.user1_id);
             const u2 = apps.find(a => a.id === m.user2_id);
+            const maleApp = u1?.gender === "남성" ? u1 : u2;
+            const femaleApp = u1?.gender === "여성" ? u1 : u2;
             const st = getMatchStatusFromRow(m);
             const stLabel = { pending: "대기 중", success: "매칭 성사", closed: "종료" };
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
@@ -658,24 +660,30 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                 </div>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">{u1 && getProfilePhoto(u1) ? <img src={getProfilePhoto(u1)!} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-muted" />}</div>
-                    <p className="text-xs font-medium mt-1">{u1?.nickname}</p>
+                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">
+                      {maleApp && getProfilePhoto(maleApp) ? (
+                        <img src={getProfilePhoto(maleApp)!} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-muted" />
+                      )}
+                    </div>
+                    <p className="text-xs font-medium mt-1">{maleApp?.nickname}</p>
                   </div>
                   <Heart className="w-4 h-4 fill-primary text-primary shrink-0" />
                   <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">{u2 && getProfilePhoto(u2) ? <img src={getProfilePhoto(u2)!} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-muted" />}</div>
-                    <p className="text-xs font-medium mt-1">{u2?.nickname}</p>
+                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">
+                      {femaleApp && getProfilePhoto(femaleApp) ? (
+                        <img src={getProfilePhoto(femaleApp)!} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-muted" />
+                      )}
+                    </div>
+                    <p className="text-xs font-medium mt-1">{femaleApp?.nickname}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 bg-secondary/20 border border-border rounded-xl p-3">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground mb-1.5">참가자 1 라운지</p>
-                    <LoungeEntryCheck response={m.user1_response} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground mb-1.5">참가자 2 라운지</p>
-                    <LoungeEntryCheck response={m.user2_response} />
-                  </div>
+                <div className="bg-secondary/20 border border-border rounded-xl p-3">
+                  <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
+                  <LoungeEntryCheck response={st === "success" ? "going" : st === "closed" ? "not_going" : "pending"} />
                 </div>
               </div>
             );
@@ -1344,6 +1352,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               {matches.map((m, idx) => {
                 const u1 = apps.find(a => a.id === m.user1_id);
                 const u2 = apps.find(a => a.id === m.user2_id);
+                const maleApp = u1?.gender === "남성" ? u1 : u2;
+                const femaleApp = u1?.gender === "여성" ? u1 : u2;
                 const st = getMatchStatusFromRow(m);
                 const stEl = { pending: <span className="text-amber-400 text-xs font-medium">대기 중</span>, success: <span className="text-green-400 text-xs font-medium">매칭 성사</span>, closed: <span className="text-muted-foreground text-xs">종료</span> };
                 return (
@@ -1355,19 +1365,23 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">매칭 {idx + 1}번</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {u1?.nickname || "-"} · {u2?.nickname || "-"}
+                          {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
                         </p>
                       </div>
                       {stEl[st]}
                     </div>
                     <div className="grid grid-cols-2 gap-4 px-4 py-3">
                       <div>
-                        <p className="text-xs text-muted-foreground mb-1">{u1?.nickname || "참가자 1"}</p>
-                        <LoungeEntryCheck response={m.user1_response} />
+                        <p className="text-xs text-muted-foreground mb-1">남성 · {maleApp?.nickname || "-"}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground mb-1">{u2?.nickname || "참가자 2"}</p>
-                        <LoungeEntryCheck response={m.user2_response} />
+                        <p className="text-xs text-muted-foreground mb-1">여성 · {femaleApp?.nickname || "-"}</p>
+                      </div>
+                    </div>
+                    <div className="px-4 pb-4">
+                      <div className="bg-secondary/20 border border-border rounded-xl p-3">
+                        <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
+                        <LoungeEntryCheck response={st === "success" ? "going" : st === "closed" ? "not_going" : "pending"} />
                       </div>
                     </div>
                     <div className="px-4 py-2.5 border-t border-border text-xs text-muted-foreground">
