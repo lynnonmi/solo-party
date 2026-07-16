@@ -186,6 +186,13 @@ async function isAlreadyApplied(sql, file) {
       (await fnExists(sql, "admin_toggle_match_lounge_entered"))
     );
   }
+  if (file === "021_field_day_hardening.sql") {
+    return (
+      (await fnExists(sql, "submit_application")) &&
+      (await fnBodyContains(sql, "admin_toggle_vote_closed", "FOR UPDATE")) &&
+      (await fnBodyContains(sql, "request_refund", "refund deadline passed"))
+    );
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

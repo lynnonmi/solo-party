@@ -192,20 +192,40 @@ const currentPrice = () => now_() >= PHASE2_START ? "45,000원" : "43,000원";
 /* ═══════════════════════════════════════════
    UTILITIES
 ═══════════════════════════════════════════ */
+function isLikelyHeic(file: File): boolean {
+  const n = file.name.toLowerCase();
+  const t = (file.type || "").toLowerCase();
+  return t.includes("heic") || t.includes("heif") || n.endsWith(".heic") || n.endsWith(".heif");
+}
+
 async function fileToBlob(file: File): Promise<Blob> {
-  return new Promise((res) => {
+  if (isLikelyHeic(file)) {
+    throw new Error("HEIC/HEIF 사진은 지원하지 않습니다. JPG 또는 PNG로 변환해 다시 올려 주세요.");
+  }
+  return new Promise((res, rej) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
+    const cleanup = () => URL.revokeObjectURL(url);
+    const fail = (msg: string) => { cleanup(); rej(new Error(msg)); };
+    img.onerror = () => fail("이미지를 불러올 수 없습니다. JPG 또는 PNG로 변환해 다시 올려 주세요.");
     img.onload = () => {
-      const MAX = 1200, s = Math.min(1, MAX / Math.max(img.width, img.height));
-      const c = document.createElement("canvas");
-      c.width = img.width * s; c.height = img.height * s;
-      const ctx = c.getContext("2d")!;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      c.toBlob((blob) => { if (blob) res(blob); }, "image/jpeg", 0.88);
+      try {
+        const MAX = 1200, s = Math.min(1, MAX / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = img.width * s; c.height = img.height * s;
+        const ctx = c.getContext("2d");
+        if (!ctx) { fail("이미지 처리에 실패했습니다."); return; }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob((blob) => {
+          cleanup();
+          if (blob) res(blob);
+          else rej(new Error("이미지 압축에 실패했습니다."));
+        }, "image/jpeg", 0.88);
+      } catch {
+        fail("이미지 처리 중 오류가 발생했습니다.");
+      }
     };
     img.src = url;
   });
@@ -672,11 +692,21 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
     if (!files.length) return;
     const canAdd = MAX_PHOTOS - uploadFiles.length;
     if (canAdd <= 0) return;
-    
+
+    const heic = files.find(isLikelyHeic);
+    if (heic) {
+      setErrors((err) => ({
+        ...err,
+        photos: "HEIC/HEIF 사진은 지원하지 않습니다. JPG 또는 PNG로 변환해 주세요.",
+      }));
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
     const addedFiles = files.slice(0, canAdd);
     const newFiles = [...uploadFiles, ...addedFiles];
     setUploadFiles(newFiles);
-    
+
     const previews = newFiles.map(f => URL.createObjectURL(f));
     setForm((f) => ({ ...f, photos: previews }));
     setErrors((e) => ({ ...e, photos: "" }));
@@ -750,23 +780,51 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         uploadedUrls.push(publicUrl);
       }
 
-      const { error: insertErr } = await supabase.from("applicants").insert({
-        name: form.name!.trim(), gender: form.gender, age: parseInt(form.age!, 10),
-        nickname: form.nickname!.trim(), mbti: form.mbti, contact: normalizeContact(form.contact!.trim()),
-        job: form.job, job_detail: form.jobDetail?.trim(),
-        current_work: form.currentWork!.trim(), life_goal: form.lifeGoal!.trim(),
-        alone_time: form.hobbies!.trim(), instagram: form.instagram!.trim(),
-        ideal_type: form.idealType!.trim(), charm: form.charm!.trim(),
-        celebrity: form.celebrity!.trim(), photos: uploadedUrls,
-        refund_bank: form.refundBank!.trim(), refund_account: form.refundAccount!.trim(),
-        status: "pending",
-        fee_confirmed: false,
+      const { error: insertErr } = await supabase.rpc("submit_application", {
+        p_name: form.name!.trim(),
+        p_gender: form.gender,
+        p_age: parseInt(form.age!, 10),
+        p_nickname: form.nickname!.trim(),
+        p_mbti: form.mbti,
+        p_contact: normalizeContact(form.contact!.trim()),
+        p_job: form.job,
+        p_job_detail: form.jobDetail?.trim() || null,
+        p_current_work: form.currentWork!.trim(),
+        p_life_goal: form.lifeGoal!.trim(),
+        p_alone_time: form.hobbies!.trim(),
+        p_instagram: form.instagram!.trim(),
+        p_ideal_type: form.idealType!.trim(),
+        p_charm: form.charm!.trim(),
+        p_celebrity: form.celebrity!.trim(),
+        p_photos: uploadedUrls,
+        p_refund_bank: form.refundBank!.trim(),
+        p_refund_account: form.refundAccount!.trim(),
       });
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        const m = insertErr.message || "";
+        if (m.includes("duplicate contact")) {
+          throw new Error("이미 같은 연락처로 신청된 내역이 있습니다. 고객센터로 문의해 주세요.");
+        }
+        if (m.includes("male applications closed")) {
+          throw new Error("현재 남성 신청은 마감되었습니다.");
+        }
+        if (m.includes("female applications closed")) {
+          throw new Error("현재 여성 신청은 마감되었습니다.");
+        }
+        if (m.includes("PGRST202") || m.includes("submit_application")) {
+          throw new Error("신청 기능 DB 설정이 필요합니다. 관리자에게 문의해 주세요.");
+        }
+        throw insertErr;
+      }
       go("success");
     } catch (e) {
       console.error(e);
-      setErrors({ global: "신청서 제출 중 오류가 발생했습니다. 다시 시도해 주세요." });
+      const msg = e instanceof Error ? e.message : "";
+      setErrors({
+        global: msg && !msg.includes("Failed")
+          ? msg
+          : "신청서 제출 중 오류가 발생했습니다. 다시 시도해 주세요.",
+      });
     } finally {
       setLoading(false);
     }
@@ -896,7 +954,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         <div className="space-y-5">
           <FormField label="본인 사진" hint={`1~${MAX_PHOTOS}장`} required error={errors.photos}>
             <div className="bg-muted/40 rounded-xl border border-dashed border-border p-4 space-y-3">
-              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotos} />
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg" multiple className="hidden" onChange={handlePhotos} />
               {form.photos && form.photos.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
                   {form.photos.map((p, i) => (
@@ -1103,7 +1161,11 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
         p_contact: normalizeContact(contact.trim()),
       });
       if (rpcErr) {
-        setError("로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+        if (rpcErr.message?.includes("ambiguous")) {
+          setError("동일 이름·연락처로 승인된 신청이 여러 건입니다. 고객센터로 문의해 주세요.");
+        } else {
+          setError("로그인 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+        }
         return;
       }
       if (!data?.length) {
@@ -1487,48 +1549,73 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      sb.rpc("get_votes_for_me"),
-      sb.rpc("get_my_matches"),
-    ]).then(async ([votesRes, matchesRes]) => {
-      if (votesRes.data) {
-        setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
-          voterId: r.voter_id as string,
-          nickname: (r.nickname as string) || "",
-          voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
-          photos: (r.photos as string[]) || [],
-          message: (r.message as string) || "",
-        })));
-      }
+    let cancelled = false;
 
-      const mData = matchesRes.data;
-      if (mData?.length) {
-        const converted: Match[] = mData.map((m: Record<string, string>) => ({
-          id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
-          calculatedAt: m.calculated_at,
-          user1Response: m.user1_response.replace("_", "-") as MatchResponse,
-          user2Response: m.user2_response.replace("_", "-") as MatchResponse,
-        }));
-        setMatches(converted);
+    const load = async (isInitial = false) => {
+      try {
+        const [votesRes, matchesRes] = await Promise.all([
+          sb.rpc("get_votes_for_me"),
+          sb.rpc("get_my_matches"),
+        ]);
+        if (cancelled) return;
 
-        const otherIds = mData.map((m: Record<string, string>) =>
-          m.user1_id === voter.id ? m.user2_id : m.user1_id
-        );
-        const { data: appsData } = await getSupabase()
-          .from("approved_for_voting")
-          .select("id, nickname, vote_profile_photo")
-          .in("id", otherIds);
-        if (appsData) {
-          const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
-          appsData.forEach((a: Record<string, string>) => {
-            map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
-          });
-          setMatchApps(map);
+        if (votesRes.data) {
+          setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
+            voterId: r.voter_id as string,
+            nickname: (r.nickname as string) || "",
+            voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
+            photos: (r.photos as string[]) || [],
+            message: (r.message as string) || "",
+          })));
         }
+
+        const mData = matchesRes.data;
+        if (mData?.length) {
+          const converted: Match[] = mData.map((m: Record<string, string>) => ({
+            id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
+            calculatedAt: m.calculated_at,
+            user1Response: m.user1_response.replace("_", "-") as MatchResponse,
+            user2Response: m.user2_response.replace("_", "-") as MatchResponse,
+          }));
+          setMatches(converted);
+
+          const otherIds = mData.map((m: Record<string, string>) =>
+            m.user1_id === voter.id ? m.user2_id : m.user1_id
+          );
+          const { data: appsData } = await getSupabase()
+            .from("approved_for_voting")
+            .select("id, nickname, vote_profile_photo")
+            .in("id", otherIds);
+          if (cancelled) return;
+          if (appsData) {
+            const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
+            appsData.forEach((a: Record<string, string>) => {
+              map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
+            });
+            setMatchApps(map);
+          }
+        } else {
+          setMatches([]);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled && isInitial) setLoading(false);
       }
-      setLoading(false);
-    });
-  }, []);
+    };
+
+    void load(true);
+    const poll = setInterval(() => { void load(false); }, 12000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load(false);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [voter.id, sessionToken]);
 
   const myMatches = matches.map(m => {
     const isUser1 = m.user1Id === voter.id;
@@ -1735,6 +1822,7 @@ function MyApplicationPage({
     } catch (e) {
       const m = e instanceof Error ? e.message : "";
       if (m.includes("refund not allowed")) setMsg("현재 상태에서는 환불을 요청할 수 없습니다.");
+      else if (m.includes("refund deadline passed")) setMsg("행사 7일 전 환불 기한이 지났습니다. 고객센터로 문의해 주세요.");
       else if (m.includes("PGRST202") || m.includes("request_refund")) setMsg("환불 기능 DB 설정이 필요합니다. 관리자에게 문의해 주세요.");
       else setMsg(m || "환불 요청에 실패했습니다.");
     } finally {
@@ -1816,6 +1904,7 @@ function RefundRequestPage({ go }: { go: (v: View) => void }) {
       });
       if (rpcErr) {
         if (rpcErr.message?.includes("not found")) throw new Error("일치하는 신청서를 찾지 못했습니다. 이름·연락처를 확인해 주세요.");
+        if (rpcErr.message?.includes("refund deadline passed")) throw new Error("행사 7일 전 환불 기한이 지났습니다. 고객센터로 문의해 주세요.");
         if (rpcErr.message?.includes("PGRST202") || rpcErr.message?.includes("request_refund")) {
           throw new Error("환불 기능 DB 설정이 필요합니다. 고객센터로 문의해 주세요.");
         }
