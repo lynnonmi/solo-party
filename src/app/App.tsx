@@ -2,11 +2,12 @@ import React, { useState, useRef, useEffect, ChangeEvent, useCallback } from "re
 import { createClient } from "@supabase/supabase-js";
 import {
   ChevronLeft, ChevronRight, Copy, CheckCheck, Heart, X, Check,
-  Plus, LogOut, ClipboardList, ChevronDown, ChevronUp,
+  Plus, LogOut, ClipboardList,
   Eye, EyeOff, AlertCircle, MessageSquare,
   Camera
 } from "lucide-react";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
+import { Checkbox } from "@/app/components/ui/checkbox";
 
 const POSTER_SRC = "/poster.webp";
 const POSTER_W = 480;
@@ -115,22 +116,9 @@ type MatchResponse = "pending" | "going" | "not-going";
 interface ReceivedVote {
   voterId: string;
   nickname: string;
-  gender: Gender;
-  age: string;
-  mbti: string;
-  job: string;
-  jobDetail?: string;
-  currentWork: string;
-  lifeGoal: string;
-  hobbies: string;
-  instagram: string;
-  idealType: string;
-  charm: string;
-  celebrity: string;
   voteProfilePhoto?: string;
   photos: string[];
   message: string;
-  createdAt: string;
 }
 
 interface Application {
@@ -1498,7 +1486,7 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const [matches,     setMatches]     = useState<Match[]>([]);
   const [matchApps,   setMatchApps]   = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
   const [loading,     setLoading]     = useState(true);
-  const [expandedId,  setExpandedId]  = useState<string | null>(null);
+  const [respondingMatchId, setRespondingMatchId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -1509,22 +1497,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
         setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
           voterId: r.voter_id as string,
           nickname: (r.nickname as string) || "",
-          gender: r.gender as Gender,
-          age: String(r.age ?? ""),
-          mbti: (r.mbti as string) || "",
-          job: (r.job as string) || "",
-          jobDetail: r.job_detail as string | undefined,
-          currentWork: (r.current_work as string) || "",
-          lifeGoal: (r.life_goal as string) || "",
-          hobbies: (r.alone_time as string) || "",
-          instagram: (r.instagram as string) || "",
-          idealType: (r.ideal_type as string) || "",
-          charm: (r.charm as string) || "",
-          celebrity: (r.celebrity as string) || "",
           voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
           photos: (r.photos as string[]) || [],
           message: (r.message as string) || "",
-          createdAt: (r.created_at as string) || "",
         })));
       }
 
@@ -1572,17 +1547,22 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   }).filter(x => x.other);
 
   const respond = async (matchId: string, isUser1: boolean, response: "going" | "not-going") => {
-    const sbResponse = response === "not-going" ? "not_going" : "going";
-    const { error } = await sb.rpc("update_lounge_response", {
-      p_match_id: matchId,
-      p_response: sbResponse,
-    });
-    if (!error) {
-      setMatches(prev => prev.map(m => {
-        if (m.id !== matchId) return m;
-        return isUser1 ? { ...m, user1Response: response as MatchResponse }
-                       : { ...m, user2Response: response as MatchResponse };
-      }));
+    setRespondingMatchId(matchId);
+    try {
+      const sbResponse = response === "not-going" ? "not_going" : "going";
+      const { error } = await sb.rpc("update_lounge_response", {
+        p_match_id: matchId,
+        p_response: sbResponse,
+      });
+      if (!error) {
+        setMatches(prev => prev.map(m => {
+          if (m.id !== matchId) return m;
+          return isUser1 ? { ...m, user1Response: response as MatchResponse }
+                         : { ...m, user2Response: response as MatchResponse };
+        }));
+      }
+    } finally {
+      setRespondingMatchId(null);
     }
   };
 
@@ -1636,7 +1616,6 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           <div className="space-y-4">
             {received.map(r => {
               const photo = r.voteProfilePhoto || r.photos[0] || null;
-              const expanded = expandedId === r.voterId;
               return (
                 <div key={r.voterId} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
                   <div className="flex items-start gap-4 p-4">
@@ -1647,13 +1626,10 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold">{r.nickname}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {r.age}세 · {r.mbti} · {r.job}{r.jobDetail ? ` (${r.jobDetail})` : ""}
-                      </p>
                     </div>
                   </div>
 
-                  <div className="px-4 pb-3">
+                  <div className="px-4 pb-4">
                     <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
                       <div className="flex items-center gap-1.5 mb-1.5">
                         <MessageSquare className="w-3.5 h-3.5 text-primary" />
@@ -1661,63 +1637,6 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                       </div>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">{r.message}</p>
                     </div>
-                  </div>
-
-                  <div className="border-t border-border px-4 py-3">
-                    <button
-                      onClick={() => setExpandedId(expanded ? null : r.voterId)}
-                      className="w-full flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                      {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      {expanded ? "프로필 접기" : "프로필 더보기"}
-                    </button>
-                    {expanded && (
-                      <div className="mt-3 space-y-3">
-                        {r.photos.length > 0 && (
-                          <div className="grid grid-cols-3 gap-2">
-                            {r.photos.map((p, i) => (
-                              <VotePhoto key={i} src={p} alt="" className="aspect-square w-full object-cover rounded-xl" width={300} />
-                            ))}
-                          </div>
-                        )}
-                        <div className="bg-secondary/40 border border-border rounded-xl p-3 space-y-2 text-sm">
-                          <div className="flex justify-between"><span className="text-muted-foreground">성별</span><span>{r.gender}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">닮은꼴</span><span>{r.celebrity || "-"}</span></div>
-                          {r.instagram && (
-                            <div className="flex justify-between"><span className="text-muted-foreground">인스타</span><span>@{r.instagram}</span></div>
-                          )}
-                        </div>
-                        {r.currentWork && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">요즘 어떤 삶을 살고 있나요?</p>
-                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.currentWork}</p>
-                          </div>
-                        )}
-                        {r.lifeGoal && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">이루고 싶은 삶</p>
-                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.lifeGoal}</p>
-                          </div>
-                        )}
-                        {r.hobbies && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">혼자 있을 때</p>
-                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.hobbies}</p>
-                          </div>
-                        )}
-                        {r.idealType && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">어떤 사람에게 끌리나요?</p>
-                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.idealType}</p>
-                          </div>
-                        )}
-                        {r.charm && (
-                          <div>
-                            <p className="text-xs text-muted-foreground mb-1">나의 장점</p>
-                            <p className="text-sm bg-secondary/20 p-3 rounded-xl border border-border leading-relaxed">{r.charm}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -1737,9 +1656,11 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-2">
             <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 라운지에 입장하시겠어요?</p>
           </div>
-          {myMatches.map(({ m, other, myR, theirR, isUser1, status }) => {
+          {myMatches.map(({ m, other, myR, theirR, isUser1, status }, idx) => {
             if (!other) return null;
             const otherPhoto = other.voteProfilePhoto ?? null;
+            const myGoing = myR === "going";
+            const checkboxDisabled = respondingMatchId === m.id || status !== "pending" || myR !== "pending";
             return (
               <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
                 <div className="flex items-center gap-4 p-4">
@@ -1756,6 +1677,27 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                 </div>
 
                 <div className="border-t border-border px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">
+                        {idx + 1}
+                      </div>
+                      <p className="text-xs font-medium text-muted-foreground">순서</p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={myGoing}
+                        disabled={checkboxDisabled}
+                        onCheckedChange={(v) => {
+                          if (checkboxDisabled) return;
+                          const next = v === true ? "going" : "not-going";
+                          void respond(m.id, isUser1, next);
+                        }}
+                        aria-label="라운지 입장"
+                      />
+                      <span className="text-sm text-muted-foreground">라운지 입장</span>
+                    </label>
+                  </div>
                   {status === "success" ? (
                     <div className="text-center py-2">
                       <p className="text-sm font-semibold text-primary mb-1">매칭 성사!</p>
@@ -1766,19 +1708,14 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                       <p className="text-sm text-muted-foreground">이 매칭은 종료되었습니다.</p>
                     </div>
                   ) : myR === "pending" ? (
-                    <div className="flex gap-2">
-                      <button onClick={() => respond(m.id, isUser1, "going")}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                        라운지 입장
-                      </button>
-                      <button onClick={() => respond(m.id, isUser1, "not-going")}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">
-                        거절
-                      </button>
+                    <div className="text-center py-1">
+                      <p className="text-xs text-muted-foreground">체크박스로 라운지 입장 여부를 선택해 주세요.</p>
                     </div>
                   ) : (
                     <div className="text-center py-1">
-                      <p className="text-xs text-muted-foreground">상대방의 응답을 기다리는 중입니다.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {myGoing ? "라운지 입장 선택 완료. " : "거절 선택 완료. "}상대방의 응답을 기다리는 중입니다.
+                      </p>
                     </div>
                   )}
                 </div>
