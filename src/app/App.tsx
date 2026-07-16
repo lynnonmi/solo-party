@@ -359,14 +359,29 @@ export default function App() {
             femaleOpen: currentSettings?.female_open ?? true,
           };
           setView(resolveVoteView(app, voteSettings) ?? "home");
+        } else if (error) {
+          // 네트워크/일시 오류면 토큰 유지 (현장 Wi-Fi). 그 외 오류만 로그아웃.
+          const msg = (error.message || "").toLowerCase();
+          const isNetwork =
+            msg.includes("failed to fetch") ||
+            msg.includes("network") ||
+            msg.includes("fetch failed") ||
+            msg.includes("timeout");
+          if (!isNetwork) {
+            localStorage.removeItem("sp_voter_token");
+            if (currentSettings?.is_open || currentSettings?.is_closed) {
+              setView("vote-login");
+            }
+          }
         } else {
+          // error 없고 빈 결과 = 토큰 무효
           localStorage.removeItem("sp_voter_token");
           if (currentSettings?.is_open || currentSettings?.is_closed) {
             setView("vote-login");
           }
         }
       } catch {
-        localStorage.removeItem("sp_voter_token");
+        // 예외(네트워크 등): 토큰 유지
       }
       setAppLoading(false);
     };
@@ -1547,6 +1562,8 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const [matches,     setMatches]     = useState<Match[]>([]);
   const [matchApps,   setMatchApps]   = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
   const [loading,     setLoading]     = useState(true);
+  const [respondError, setRespondError] = useState("");
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1632,18 +1649,23 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   }).filter(x => x.other);
 
   const respond = async (matchId: string, isUser1: boolean, response: "going" | "not-going") => {
+    setRespondError("");
+    setRespondingId(matchId);
     const sbResponse = response === "not-going" ? "not_going" : "going";
     const { error } = await sb.rpc("update_lounge_response", {
       p_match_id: matchId,
       p_response: sbResponse,
     });
-    if (!error) {
-      setMatches(prev => prev.map(m => {
-        if (m.id !== matchId) return m;
-        return isUser1 ? { ...m, user1Response: response as MatchResponse }
-                       : { ...m, user2Response: response as MatchResponse };
-      }));
+    setRespondingId(null);
+    if (error) {
+      setRespondError("응답 저장에 실패했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
+      return;
     }
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      return isUser1 ? { ...m, user1Response: response as MatchResponse }
+                     : { ...m, user2Response: response as MatchResponse };
+    }));
   };
 
   return (
@@ -1736,6 +1758,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-2">
             <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 라운지에 입장하시겠어요?</p>
           </div>
+          {respondError && (
+            <p className="text-xs text-destructive px-1">{respondError}</p>
+          )}
           {myMatches.map(({ m, other, myR, theirR, isUser1, status }) => {
             if (!other) return null;
             const otherPhoto = other.voteProfilePhoto ?? null;
@@ -1766,12 +1791,16 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                     </div>
                   ) : myR === "pending" ? (
                     <div className="flex gap-2">
-                      <button onClick={() => respond(m.id, isUser1, "going")}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity">
-                        라운지 입장
+                      <button
+                        onClick={() => respond(m.id, isUser1, "going")}
+                        disabled={respondingId === m.id}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
+                        {respondingId === m.id ? "저장 중..." : "라운지 입장"}
                       </button>
-                      <button onClick={() => respond(m.id, isUser1, "not-going")}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">
+                      <button
+                        onClick={() => respond(m.id, isUser1, "not-going")}
+                        disabled={respondingId === m.id}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
                         거절
                       </button>
                     </div>

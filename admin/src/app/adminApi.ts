@@ -268,9 +268,20 @@ export const adminApi = {
   },
 
   async verifySession(): Promise<boolean> {
-    const { data, error } = await getClient().rpc("admin_verify_session");
-    if (error) return false;
-    return data === true;
+    try {
+      const { data, error } = await getClient().rpc("admin_verify_session");
+      if (error) {
+        const msg = `${error.message || ""} ${error.code || ""}`.toLowerCase();
+        // 실제 세션 만료만 로그아웃. 현장 Wi-Fi 끊김(Failed to fetch 등)은 유지.
+        if (msg.includes("unauthorized") || msg.includes("jwt expired") || msg.includes("invalid jwt")) {
+          return false;
+        }
+        return true;
+      }
+      return data === true;
+    } catch {
+      return true;
+    }
   },
 
   async toggleGenderOpen(gender: string, open: boolean): Promise<void> {
