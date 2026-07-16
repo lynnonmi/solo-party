@@ -103,7 +103,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [subs, setSubs] = useState<{ voter_id: string; voted_for_id: string; message: string }[]>([]);
   const [matches, setMatches] = useState<{
     id: string; user1_id: string; user2_id: string;
-    calculated_at: string; user1_response: string; user2_response: string;
+    user1_response: string; user2_response: string;
+    lounge_entered: boolean;
   }[]>([]);
   const [settings, setSettings] = useState<{
     is_open: boolean; is_closed: boolean; closed_at?: string;
@@ -128,6 +129,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [voteActing, setVoteActing] = useState(false);
   const [refundError, setRefundError] = useState("");
   const [refundActing, setRefundActing] = useState(false);
+  const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
 
   const refresh = async () => {
     const ok = await adminApi.verifySession();
@@ -324,6 +326,16 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       setVoteActionError(msg);
     } finally {
       setVoteActing(false);
+    }
+  };
+
+  const toggleLoungeEntered = async (matchId: string, entered: boolean) => {
+    setLoungeTogglingId(matchId);
+    try {
+      await adminApi.toggleMatchLoungeEntered(matchId, entered);
+      setMatches(prev => prev.map(m => m.id === matchId ? { ...m, lounge_entered: entered } : m));
+    } finally {
+      setLoungeTogglingId(null);
     }
   };
 
@@ -683,7 +695,11 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                 </div>
                 <div className="bg-secondary/20 border border-border rounded-xl p-3">
                   <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
-                  <LoungeEntryCheck response={st === "success" ? "going" : st === "closed" ? "not_going" : "pending"} />
+                  <LoungeEntryCheck
+                    checked={m.lounge_entered}
+                    disabled={loungeTogglingId === m.id}
+                    onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                  />
                 </div>
               </div>
             );
@@ -777,7 +793,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [subs, setSubs] = useState<{ voter_id: string; voted_for_id: string; message: string }[]>([]);
   const [matches, setMatches] = useState<{
     id: string; user1_id: string; user2_id: string;
-    calculated_at: string; user1_response: string; user2_response: string;
+    user1_response: string; user2_response: string;
+    lounge_entered: boolean;
   }[]>([]);
   const [settings, setSettings] = useState<{
     is_open: boolean; is_closed: boolean; closed_at?: string;
@@ -804,6 +821,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [voteActing, setVoteActing] = useState(false);
   const [refundError, setRefundError] = useState("");
   const [refundActing, setRefundActing] = useState(false);
+  const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
 
   const refresh = async () => {
     const ok = await adminApi.verifySession();
@@ -1002,6 +1020,16 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       setRefundError(msg);
     } finally {
       setRefundActing(false);
+    }
+  };
+
+  const toggleLoungeEntered = async (matchId: string, entered: boolean) => {
+    setLoungeTogglingId(matchId);
+    try {
+      await adminApi.toggleMatchLoungeEntered(matchId, entered);
+      setMatches(prev => prev.map(m => m.id === matchId ? { ...m, lounge_entered: entered } : m));
+    } finally {
+      setLoungeTogglingId(null);
     }
   };
 
@@ -1381,11 +1409,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     <div className="px-4 pb-4">
                       <div className="bg-secondary/20 border border-border rounded-xl p-3">
                         <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
-                        <LoungeEntryCheck response={st === "success" ? "going" : st === "closed" ? "not_going" : "pending"} />
+                        <LoungeEntryCheck
+                          checked={m.lounge_entered}
+                          disabled={loungeTogglingId === m.id}
+                          onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                        />
                       </div>
-                    </div>
-                    <div className="px-4 py-2.5 border-t border-border text-xs text-muted-foreground">
-                      계산 시각: {new Date(m.calculated_at).toLocaleString("ko-KR")}
                     </div>
                   </div>
                 );

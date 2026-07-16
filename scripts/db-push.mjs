@@ -180,6 +180,12 @@ async function isAlreadyApplied(sql, file) {
     `;
     return exists;
   }
+  if (file === "020_admin_match_lounge_entered.sql") {
+    return (
+      (await colExists(sql, "matches", "lounge_entered")) &&
+      (await fnExists(sql, "admin_toggle_match_lounge_entered"))
+    );
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

@@ -213,10 +213,18 @@ export const adminApi = {
       id: m.id,
       user1_id: m.user1_id,
       user2_id: m.user2_id,
-      calculated_at: m.calculated_at,
       user1_response: m.user1_response,
       user2_response: m.user2_response,
+      lounge_entered: !!m.lounge_entered,
     }));
+  },
+
+  async toggleMatchLoungeEntered(id: string, entered: boolean) {
+    const { error } = await getClient().rpc("admin_toggle_match_lounge_entered", {
+      p_match_id: id,
+      p_entered: entered,
+    });
+    if (error) throw error;
   },
 
   async getVoteSettings(): Promise<AdminVoteSettings> {
