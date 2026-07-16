@@ -650,60 +650,38 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       {tab === "matching" && (
-        <div className="px-4 space-y-3">
-          {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 text-center"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
+        <div className="px-4">
+          {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 text-center mb-3"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
           {matches.length === 0 && settings.is_closed && <p className="text-center text-muted-foreground text-sm py-12">매칭된 쌍이 없습니다.</p>}
+          <div className="grid grid-cols-2 gap-2">
           {matches.map((m, idx) => {
             const u1 = apps.find(a => a.id === m.user1_id);
             const u2 = apps.find(a => a.id === m.user2_id);
             const maleApp = u1?.gender === "남성" ? u1 : u2;
             const femaleApp = u1?.gender === "여성" ? u1 : u2;
             const st = getMatchStatusFromRow(m);
-            const stLabel = { pending: "대기 중", success: "매칭 성사", closed: "종료" };
+            const stLabel = { pending: "대기", success: "성사", closed: "종료" };
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
             return (
-              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border">
-                  <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-2.5">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
                     {idx + 1}
                   </div>
-                  <p className="text-xs font-medium text-muted-foreground">매칭 {idx + 1}번</p>
-                  <span className={`ml-auto text-xs font-medium ${stColor[st]}`}>{stLabel[st]}</span>
+                  <p className="text-[11px] font-medium truncate flex-1 min-w-0 leading-tight">
+                    {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
+                  </p>
+                  <span className={`text-[10px] font-medium shrink-0 ${stColor[st]}`}>{stLabel[st]}</span>
                 </div>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">
-                      {maleApp && getProfilePhoto(maleApp) ? (
-                        <img src={getProfilePhoto(maleApp)!} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-muted" />
-                      )}
-                    </div>
-                    <p className="text-xs font-medium mt-1">{maleApp?.nickname}</p>
-                  </div>
-                  <Heart className="w-4 h-4 fill-primary text-primary shrink-0" />
-                  <div className="flex-1 text-center">
-                    <div className="w-10 h-10 rounded-full bg-muted mx-auto overflow-hidden">
-                      {femaleApp && getProfilePhoto(femaleApp) ? (
-                        <img src={getProfilePhoto(femaleApp)!} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-muted" />
-                      )}
-                    </div>
-                    <p className="text-xs font-medium mt-1">{femaleApp?.nickname}</p>
-                  </div>
-                </div>
-                <div className="bg-secondary/20 border border-border rounded-xl p-3">
-                  <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
-                  <LoungeEntryCheck
-                    checked={m.lounge_entered}
-                    disabled={loungeTogglingId === m.id}
-                    onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
-                  />
-                </div>
+                <LoungeEntryCheck
+                  checked={m.lounge_entered}
+                  disabled={loungeTogglingId === m.id}
+                  onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                />
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -1374,52 +1352,36 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
 
         {section === "matching" && (
           <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-base font-semibold mb-5">매칭 현황 ({matches.length}쌍)</h2>
-            {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-4 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
-            <div className="space-y-3">
+            <h2 className="text-base font-semibold mb-4">매칭 현황 ({matches.length}쌍)</h2>
+            {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
+            <div className="grid grid-cols-2 gap-3">
               {matches.map((m, idx) => {
                 const u1 = apps.find(a => a.id === m.user1_id);
                 const u2 = apps.find(a => a.id === m.user2_id);
                 const maleApp = u1?.gender === "남성" ? u1 : u2;
                 const femaleApp = u1?.gender === "여성" ? u1 : u2;
                 const st = getMatchStatusFromRow(m);
-                const stEl = { pending: <span className="text-amber-400 text-xs font-medium">대기 중</span>, success: <span className="text-green-400 text-xs font-medium">매칭 성사</span>, closed: <span className="text-muted-foreground text-xs">종료</span> };
+                const stEl = { pending: <span className="text-amber-400 text-[11px] font-medium">대기</span>, success: <span className="text-green-400 text-[11px] font-medium">성사</span>, closed: <span className="text-muted-foreground text-[11px]">종료</span> };
                 return (
-                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
+                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                         {idx + 1}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">매칭 {idx + 1}번</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
-                        </p>
-                      </div>
+                      <p className="text-xs font-medium truncate flex-1 min-w-0 leading-tight">
+                        {maleApp?.nickname || "-"} · {femaleApp?.nickname || "-"}
+                      </p>
                       {stEl[st]}
                     </div>
-                    <div className="grid grid-cols-2 gap-4 px-4 py-3">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">남성 · {maleApp?.nickname || "-"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">여성 · {femaleApp?.nickname || "-"}</p>
-                      </div>
-                    </div>
-                    <div className="px-4 pb-4">
-                      <div className="bg-secondary/20 border border-border rounded-xl p-3">
-                        <p className="text-[10px] text-muted-foreground mb-1.5">매칭 라운지 입장</p>
-                        <LoungeEntryCheck
-                          checked={m.lounge_entered}
-                          disabled={loungeTogglingId === m.id}
-                          onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
-                        />
-                      </div>
-                    </div>
+                    <LoungeEntryCheck
+                      checked={m.lounge_entered}
+                      disabled={loungeTogglingId === m.id}
+                      onCheckedChange={(v) => { void toggleLoungeEntered(m.id, v); }}
+                    />
                   </div>
                 );
               })}
-              {!matches.length && <p className="text-center text-muted-foreground text-sm py-8">매칭 데이터가 없습니다.</p>}
+              {!matches.length && <p className="col-span-2 text-center text-muted-foreground text-sm py-8">매칭 데이터가 없습니다.</p>}
             </div>
           </div>
         )}
