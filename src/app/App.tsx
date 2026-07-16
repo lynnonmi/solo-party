@@ -138,6 +138,7 @@ interface Application {
   charm: string;
   celebrity: string;
   photos: string[];
+  photoThumbs?: string[];
   voteProfilePhoto?: string;
   refundBank: string;
   refundAccount: string;
@@ -198,7 +199,7 @@ function isLikelyHeic(file: File): boolean {
   return t.includes("heic") || t.includes("heif") || n.endsWith(".heic") || n.endsWith(".heif");
 }
 
-async function fileToBlob(file: File): Promise<Blob> {
+async function fileToBlob(file: File, maxEdge = 1400, quality = 0.88): Promise<Blob> {
   if (isLikelyHeic(file)) {
     throw new Error("HEIC/HEIF 사진은 지원하지 않습니다. JPG 또는 PNG로 변환해 다시 올려 주세요.");
   }
@@ -210,9 +211,7 @@ async function fileToBlob(file: File): Promise<Blob> {
     img.onerror = () => fail("이미지를 불러올 수 없습니다. JPG 또는 PNG로 변환해 다시 올려 주세요.");
     img.onload = () => {
       try {
-        // Free 플랜도 가정: 업로드 시점에 작게 압축 (Pro 이미지 변환 불필요)
-        const MAX = 800;
-        const s = Math.min(1, MAX / Math.max(img.width, img.height));
+        const s = Math.min(1, maxEdge / Math.max(img.width, img.height));
         const c = document.createElement("canvas");
         c.width = Math.round(img.width * s);
         c.height = Math.round(img.height * s);
@@ -225,7 +224,7 @@ async function fileToBlob(file: File): Promise<Blob> {
           cleanup();
           if (blob) res(blob);
           else rej(new Error("이미지 압축에 실패했습니다."));
-        }, "image/jpeg", 0.72);
+        }, "image/jpeg", quality);
       } catch {
         fail("이미지 처리 중 오류가 발생했습니다.");
       }
@@ -337,6 +336,7 @@ export default function App() {
             charm: row.charm || "",
             celebrity: row.celebrity || "",
             photos: row.photos || [],
+            photoThumbs: row.photo_thumbs || [],
             voteProfilePhoto: row.vote_profile_photo || undefined,
             refundBank: row.refund_bank || "",
             refundAccount: row.refund_account || "",
@@ -778,16 +778,26 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
       }
 
       const uploadedUrls: string[] = [];
+      const uploadedThumbs: string[] = [];
       const supabase = getSupabase();
       for (const file of uploadFiles) {
-        const compressedBlob = await fileToBlob(file);
-        const filename = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+        const reviewBlob = await fileToBlob(file, 1400, 0.88);
+        const thumbBlob = await fileToBlob(file, 480, 0.7);
+        const base = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const reviewName = `${base}.jpg`;
+        const thumbName = `${base}_thumb.jpg`;
         const { error: uploadErr } = await supabase.storage
           .from("applicants")
-          .upload(filename, compressedBlob, { contentType: "image/jpeg" });
+          .upload(reviewName, reviewBlob, { contentType: "image/jpeg" });
         if (uploadErr) throw uploadErr;
-        const { data: { publicUrl } } = supabase.storage.from("applicants").getPublicUrl(filename);
-        uploadedUrls.push(publicUrl);
+        const { error: thumbErr } = await supabase.storage
+          .from("applicants")
+          .upload(thumbName, thumbBlob, { contentType: "image/jpeg" });
+        if (thumbErr) throw thumbErr;
+        const { data: { publicUrl: reviewUrl } } = supabase.storage.from("applicants").getPublicUrl(reviewName);
+        const { data: { publicUrl: thumbUrl } } = supabase.storage.from("applicants").getPublicUrl(thumbName);
+        uploadedUrls.push(reviewUrl);
+        uploadedThumbs.push(thumbUrl);
       }
 
       const { error: insertErr } = await supabase.rpc("submit_application", {
@@ -807,6 +817,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
         p_charm: form.charm!.trim(),
         p_celebrity: form.celebrity!.trim(),
         p_photos: uploadedUrls,
+        p_photo_thumbs: uploadedThumbs,
         p_refund_bank: form.refundBank!.trim(),
         p_refund_account: form.refundAccount!.trim(),
       });
@@ -1201,6 +1212,7 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
         charm:             row.charm || "",
         celebrity:         row.celebrity || "",
         photos:            row.photos ?? [],
+        photoThumbs:       row.photo_thumbs ?? [],
         voteProfilePhoto:  row.vote_profile_photo ?? undefined,
         refundBank:        row.refund_bank || "",
         refundAccount:     row.refund_account || "",
@@ -1270,7 +1282,13 @@ function VoteProfilePage({ voter, go, onUpdate, sessionToken, onLogout }: {
     if (!selected || voter.voteProfilePhoto) return;
     setSaving(true);
     setSaveErr("");
-    const { error } = await sb.rpc("update_vote_profile_photo", { p_photo_url: selected });
+    // 투표 그리드용: 가능하면 썸네일 URL 저장. 선택 UI는 선명한 photos 사용.
+    const idx = voter.photos.findIndex((p) => p === selected);
+    const voteUrl =
+      idx >= 0 && voter.photoThumbs?.[idx]
+        ? voter.photoThumbs[idx]
+        : selected;
+    const { error } = await sb.rpc("update_vote_profile_photo", { p_photo_url: voteUrl });
     if (error) {
       setSaveErr(error.message?.includes("profile already set")
         ? "프로필 사진은 한 번 설정하면 변경할 수 없습니다."
@@ -1278,7 +1296,7 @@ function VoteProfilePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       setSaving(false);
       return;
     }
-    onUpdate({ ...voter, voteProfilePhoto: selected });
+    onUpdate({ ...voter, voteProfilePhoto: voteUrl });
     setSaving(false);
     go("vote");
   };

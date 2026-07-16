@@ -193,6 +193,12 @@ async function isAlreadyApplied(sql, file) {
       (await fnBodyContains(sql, "request_refund", "refund deadline passed"))
     );
   }
+  if (file === "022_photo_thumbs_for_vote.sql") {
+    return (
+      (await colExists(sql, "applicants", "photo_thumbs")) &&
+      (await fnBodyContains(sql, "submit_application", "photo_thumbs"))
+    );
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }
