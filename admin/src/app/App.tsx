@@ -663,7 +663,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             const stLabel = { pending: "대기", success: "성사", closed: "종료" };
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
             return (
-              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-2.5">
+              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-3 py-3.5">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                     {idx + 1}
@@ -1365,7 +1365,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 const st = getMatchStatusFromRow(m);
                 const stEl = { pending: <span className="text-amber-400 text-sm font-medium">대기</span>, success: <span className="text-green-400 text-sm font-medium">성사</span>, closed: <span className="text-muted-foreground text-sm">종료</span> };
                 return (
-                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3">
+                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-4 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
                         {idx + 1}
