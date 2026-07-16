@@ -210,9 +210,12 @@ async function fileToBlob(file: File): Promise<Blob> {
     img.onerror = () => fail("이미지를 불러올 수 없습니다. JPG 또는 PNG로 변환해 다시 올려 주세요.");
     img.onload = () => {
       try {
-        const MAX = 1200, s = Math.min(1, MAX / Math.max(img.width, img.height));
+        // Free 플랜도 가정: 업로드 시점에 작게 압축 (Pro 이미지 변환 불필요)
+        const MAX = 800;
+        const s = Math.min(1, MAX / Math.max(img.width, img.height));
         const c = document.createElement("canvas");
-        c.width = img.width * s; c.height = img.height * s;
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
         const ctx = c.getContext("2d");
         if (!ctx) { fail("이미지 처리에 실패했습니다."); return; }
         ctx.imageSmoothingEnabled = true;
@@ -222,18 +225,13 @@ async function fileToBlob(file: File): Promise<Blob> {
           cleanup();
           if (blob) res(blob);
           else rej(new Error("이미지 압축에 실패했습니다."));
-        }, "image/jpeg", 0.88);
+        }, "image/jpeg", 0.72);
       } catch {
         fail("이미지 처리 중 오류가 발생했습니다.");
       }
     };
     img.src = url;
   });
-}
-
-function photoDisplayUrl(url: string, width = 600): string {
-  if (!url || !url.includes("/storage/v1/object/public/")) return url;
-  return url.replace("/object/public/", "/render/image/public/") + `?width=${width}&quality=88&resize=cover`;
 }
 
 function resolveVoteView(app: Application, settings: VoteSettings): View | null {
@@ -245,19 +243,16 @@ function resolveVoteView(app: Application, settings: VoteSettings): View | null 
   return null;
 }
 
-function VotePhoto({ src, alt, className, width = 400 }: {
+function VotePhoto({ src, alt, className }: {
   src: string; alt: string; className?: string; width?: number;
 }) {
-  const [failed, setFailed] = React.useState(false);
-  const display = failed ? src : photoDisplayUrl(src, width);
   return (
     <img
-      src={display}
+      src={src}
       alt={alt}
       className={className}
       loading="lazy"
       decoding="async"
-      onError={() => { if (!failed) setFailed(true); }}
     />
   );
 }
