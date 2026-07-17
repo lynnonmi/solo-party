@@ -55,7 +55,6 @@ async function sendSolapiSms(opts: {
     from: opts.from,
     text: opts.text,
   };
-  // 긴 문자는 LMS로 가고, subject가 제목으로 표시됨
   if (opts.subject?.trim()) {
     message.subject = opts.subject.trim().slice(0, 40);
   }
@@ -89,16 +88,40 @@ async function sendSolapiSms(opts: {
   return parsed;
 }
 
+function extractProviderMessageId(parsed: Record<string, unknown>): string | null {
+  const direct = parsed.messageId ?? parsed.message_id;
+  if (typeof direct === "string" && direct) return direct;
+  const group = parsed.groupId ?? parsed.group_id;
+  if (typeof group === "string" && group) return group;
+  return null;
+}
+
+async function ignoreRpcError(
+  client: ReturnType<typeof createClient>,
+  name: string,
+  args: Record<string, unknown>,
+) {
+  try {
+    await client.rpc(name, args);
+  } catch {
+    // Best-effort logging must not hide the original provider error.
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
   }
+
+  let claimedKey: string | null = null;
+  let supabase: ReturnType<typeof createClient> | null = null;
 
   try {
     const payload = await req.json().catch(() => ({} as Record<string, unknown>));
     const applicant_id = payload.applicant_id as string | undefined;
     const text = payload.text as string | undefined;
     const subject = payload.subject as string | undefined;
+    const force = payload.force === true;
     const adminToken =
       req.headers.get("x-admin-token") ||
       (payload.admin_token as string | undefined) ||
@@ -122,8 +145,7 @@ Deno.serve(async (req) => {
       }, 500);
     }
 
-    // 테이블 직접 조회 대신 anon + admin RPC (권한 문제 회피)
-    const supabase = createClient(
+    supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { "x-admin-token": adminToken } } },
@@ -171,8 +193,53 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "승인 또는 거절된 참가자에게만 문자를 보낼 수 있습니다." }, 400);
     }
 
+    const kind = applicant.status === "rejected" ? "reject" : "approve";
+    // 기본 키: 같은 상태당 1회. force면 새 키로 재발송.
+    const idempotency_key = force
+      ? `${applicant_id}:${kind}:${crypto.randomUUID()}`
+      : `${applicant_id}:${kind}:v1`;
+    claimedKey = idempotency_key;
+
+    const { data: claimRows, error: claimErr } = await supabase.rpc("admin_claim_sms_send", {
+      p_applicant_id: applicant_id,
+      p_kind: kind,
+      p_idempotency_key: idempotency_key,
+    });
+    if (claimErr) {
+      if (claimErr.code === "PGRST202" || claimErr.message?.includes("Could not find the function")) {
+        // 구버전 DB: claim 없이 진행 (하위 호환)
+      } else {
+        return json({ ok: false, error: claimErr.message || "SMS claim 실패" }, 500);
+      }
+    } else {
+      const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows;
+      if (claim?.result === "already_sent") {
+        return json({
+          ok: true,
+          already_sent: true,
+          provider_message_id: claim.provider_message_id ?? null,
+        });
+      }
+      if (claim?.result === "uncertain") {
+        return json({
+          ok: false,
+          uncertain: true,
+          error:
+            "이전 전송 결과를 확정할 수 없어 자동 재전송을 막았습니다. Solapi 내역을 확인한 뒤 필요할 때만 강제 재발송하세요.",
+          provider_message_id: claim.provider_message_id ?? null,
+        }, 409);
+      }
+    }
+
     const to = normalizePhone(String(applicant.contact ?? ""));
     if (!/^01[0-9]{8,9}$/.test(to)) {
+      if (claimedKey) {
+        await ignoreRpcError(supabase, "admin_finish_sms_send", {
+          p_idempotency_key: claimedKey,
+          p_success: false,
+          p_error_message: `invalid contact: ${applicant.contact}`,
+        });
+      }
       return json({
         ok: false,
         error: `연락처 형식이 올바르지 않습니다: ${applicant.contact}`,
@@ -210,26 +277,60 @@ https://open.kakao.com/o/s9r5ORCi
       "[김해린의 두번째 솔로파티] 승인 안내"
     ).slice(0, 40);
 
-    await sendSolapiSms({
-      apiKey,
-      apiSecret,
-      to,
-      from: sender.replace(/\D/g, ""),
-      text: smsText,
-      subject: smsSubject,
-    });
-
-    const { error: updateErr } = await supabase.rpc("admin_mark_sms_sent", {
-      p_id: applicant_id,
-    });
-    if (updateErr) {
-      return json({
-        ok: false,
-        error: `문자는 전송됐으나 DB 업데이트 실패: ${updateErr.message}`,
-      }, 500);
+    let providerId: string | null = null;
+    try {
+      const parsed = await sendSolapiSms({
+        apiKey,
+        apiSecret,
+        to,
+        from: sender.replace(/\D/g, ""),
+        text: smsText,
+        subject: smsSubject,
+      });
+      providerId = extractProviderMessageId(parsed);
+    } catch (sendErr) {
+      const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      if (claimedKey) {
+        await ignoreRpcError(supabase, "admin_finish_sms_send", {
+          p_idempotency_key: claimedKey,
+          p_success: false,
+          p_error_message: msg,
+        });
+      }
+      throw sendErr;
     }
 
-    return json({ ok: true });
+    if (claimedKey) {
+      const { error: finishErr } = await supabase.rpc("admin_finish_sms_send", {
+        p_idempotency_key: claimedKey,
+        p_success: true,
+        p_provider_message_id: providerId,
+      });
+      if (finishErr) {
+        // 문자는 갔지만 로그 실패 — 중복 방지 위해 already 처리된 것처럼 표시
+        if (finishErr.code === "PGRST202") {
+          await ignoreRpcError(supabase, "admin_mark_sms_sent", { p_id: applicant_id });
+        } else {
+          return json({
+            ok: false,
+            error: `문자는 전송됐으나 로그 저장 실패: ${finishErr.message}`,
+            provider_message_id: providerId,
+          }, 500);
+        }
+      }
+    } else {
+      const { error: updateErr } = await supabase.rpc("admin_mark_sms_sent", {
+        p_id: applicant_id,
+      });
+      if (updateErr) {
+        return json({
+          ok: false,
+          error: `문자는 전송됐으나 DB 업데이트 실패: ${updateErr.message}`,
+        }, 500);
+      }
+    }
+
+    return json({ ok: true, provider_message_id: providerId, already_sent: false });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ ok: false, error: msg || "문자 전송에 실패했습니다." }, 500);

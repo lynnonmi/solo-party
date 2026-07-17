@@ -7,7 +7,11 @@
     "build": "vite build",
     "dev": "vite",
     "db:push": "node scripts/db-push.mjs",
-    "admin:set-password": "node scripts/set-admin-password.mjs"
+    "admin:set-password": "node scripts/set-admin-password.mjs",
+    "test": "node --test scripts/test-unit.mjs",
+    "test:db": "node scripts/test-ops-hardening.mjs",
+    "test:all": "npm run test && npm run test:db",
+    "cleanup:orphans": "node scripts/cleanup-storage-orphans.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

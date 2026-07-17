@@ -119,6 +119,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [smsModal, setSmsModal] = useState<Application | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const [smsError, setSmsError] = useState("");
+  const [smsForce, setSmsForce] = useState(false);
+  const [smsInfo, setSmsInfo] = useState("");
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -249,9 +251,20 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     if (!smsModal) return;
     setSmsSending(true);
     setSmsError("");
+    setSmsInfo("");
     try {
-      await adminApi.sendSms(smsModal.id, getSmsBody(smsModal.status), getSmsSubject(smsModal.status));
+      const res = await adminApi.sendSms(
+        smsModal.id,
+        getSmsBody(smsModal.status),
+        getSmsSubject(smsModal.status),
+        { force: smsForce },
+      );
+      if (res.already_sent) {
+        setSmsInfo("이미 발송된 문자입니다. 다시 보내려면 ‘강제 재발송’을 체크하세요.");
+        return;
+      }
       setSmsModal(null);
+      setSmsForce(false);
       refresh();
     } catch (e) {
       setSmsError(e instanceof Error ? e.message : "문자 전송에 실패했습니다.");
@@ -731,11 +744,16 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span className="whitespace-pre-wrap text-left">{getSmsBody(smsModal.status)}</span></div>
             </div>
             {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
+            {smsInfo && <p className="text-xs text-amber-400 mb-3">{smsInfo}</p>}
+            <label className="flex items-center gap-2 text-xs text-muted-foreground mb-3 cursor-pointer">
+              <input type="checkbox" checked={smsForce} onChange={(e) => setSmsForce(e.target.checked)} className="rounded border-border" />
+              강제 재발송 (이미 보낸 경우에도 다시 전송)
+            </label>
             <div className="flex gap-2">
               <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
-                {smsSending ? "전송 중..." : "문자 전송"}
+                {smsSending ? "전송 중..." : smsForce ? "강제 재발송" : "문자 전송"}
               </button>
-              <button onClick={() => { setSmsModal(null); setSmsError(""); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">닫기</button>
+              <button onClick={() => { setSmsModal(null); setSmsError(""); setSmsInfo(""); setSmsForce(false); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">닫기</button>
             </div>
           </div>
         </div>
@@ -745,8 +763,9 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => !deleting && setDeleteModal(null)}>
           <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold mb-1">신청자 삭제</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              <span className="text-foreground font-medium">{deleteModal.name}</span> ({deleteModal.nickname})님의 신청서를 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              <span className="text-foreground font-medium">{deleteModal.name}</span> ({deleteModal.nickname})님을 목록에서 숨깁니다(소프트 삭제).
+              세션·투표·매칭은 정리되며, 같은 연락처로 다시 신청할 수 있습니다.
             </p>
             {deleteError && <p className="text-xs text-destructive mb-3">{deleteError}</p>}
             <div className="flex gap-2">
@@ -833,6 +852,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [smsModal, setSmsModal] = useState<Application | null>(null);
   const [smsSending, setSmsSending] = useState(false);
   const [smsError, setSmsError] = useState("");
+  const [smsForce, setSmsForce] = useState(false);
+  const [smsInfo, setSmsInfo] = useState("");
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -966,10 +987,21 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     if (!smsModal) return;
     setSmsSending(true);
     setSmsError("");
+    setSmsInfo("");
     try {
-      await adminApi.sendSms(smsModal.id, getSmsBody(smsModal.status), getSmsSubject(smsModal.status));
+      const res = await adminApi.sendSms(
+        smsModal.id,
+        getSmsBody(smsModal.status),
+        getSmsSubject(smsModal.status),
+        { force: smsForce },
+      );
+      if (res.already_sent) {
+        setSmsInfo("이미 발송된 문자입니다. 다시 보내려면 ‘강제 재발송’을 체크하세요.");
+        return;
+      }
       if (selected?.id === smsModal.id) setSelected(s => s ? { ...s, smsSent: true } : s);
       setSmsModal(null);
+      setSmsForce(false);
       refresh();
     } catch (e) {
       setSmsError(e instanceof Error ? e.message : "문자 전송에 실패했습니다.");
@@ -1480,11 +1512,16 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">내용</span><span className="whitespace-pre-wrap text-left">{getSmsBody(smsModal.status)}</span></div>
             </div>
             {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
+            {smsInfo && <p className="text-xs text-amber-400 mb-3">{smsInfo}</p>}
+            <label className="flex items-center gap-2 text-xs text-muted-foreground mb-3 cursor-pointer">
+              <input type="checkbox" checked={smsForce} onChange={(e) => setSmsForce(e.target.checked)} className="rounded border-border" />
+              강제 재발송 (이미 보낸 경우에도 다시 전송)
+            </label>
             <div className="flex gap-2">
               <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {smsSending ? "전송 중..." : "문자 전송"}
+                {smsSending ? "전송 중..." : smsForce ? "강제 재발송" : "문자 전송"}
               </button>
-              <button onClick={() => { setSmsModal(null); setSmsError(""); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">닫기</button>
+              <button onClick={() => { setSmsModal(null); setSmsError(""); setSmsInfo(""); setSmsForce(false); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">닫기</button>
             </div>
           </div>
         </div>
@@ -1494,8 +1531,9 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setDeleteModal(null)}>
           <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
             <h3 className="font-semibold mb-1">신청자 삭제</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              <span className="text-foreground font-medium">{deleteModal.name}</span> ({deleteModal.nickname})님의 신청서를 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              <span className="text-foreground font-medium">{deleteModal.name}</span> ({deleteModal.nickname})님을 목록에서 숨깁니다(소프트 삭제).
+              세션·투표·매칭은 정리되며, 같은 연락처로 다시 신청할 수 있습니다.
             </p>
             {deleteError && <p className="text-xs text-destructive mb-3">{deleteError}</p>}
             <div className="flex gap-2">

@@ -771,6 +771,7 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
 
   const submit = async () => {
     setLoading(true);
+    const uploadedPaths: string[] = [];
     try {
       if (!SB_READY) {
         setErrors({ global: "Supabase가 연결되지 않았습니다. 관리자에게 문의해 주세요." });
@@ -790,10 +791,12 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
           .from("applicants")
           .upload(reviewName, reviewBlob, { contentType: "image/jpeg" });
         if (uploadErr) throw uploadErr;
+        uploadedPaths.push(reviewName);
         const { error: thumbErr } = await supabase.storage
           .from("applicants")
           .upload(thumbName, thumbBlob, { contentType: "image/jpeg" });
         if (thumbErr) throw thumbErr;
+        uploadedPaths.push(thumbName);
         const { data: { publicUrl: reviewUrl } } = supabase.storage.from("applicants").getPublicUrl(reviewName);
         const { data: { publicUrl: thumbUrl } } = supabase.storage.from("applicants").getPublicUrl(thumbName);
         uploadedUrls.push(reviewUrl);
@@ -840,6 +843,14 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
       go("success");
     } catch (e) {
       console.error(e);
+      // 업로드만 되고 DB 실패 시 Storage orphan 정리
+      if (uploadedPaths.length) {
+        try {
+          await getSupabase().storage.from("applicants").remove(uploadedPaths);
+        } catch (cleanupErr) {
+          console.error("orphan cleanup failed", cleanupErr);
+        }
+      }
       const msg = e instanceof Error ? e.message : "";
       setErrors({
         global: msg && !msg.includes("Failed")

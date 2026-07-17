@@ -132,6 +132,17 @@ async function colExists(sql, table, column) {
   return exists;
 }
 
+async function tableExists(sql, table) {
+  const [{ exists }] = await sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = ${table}
+    ) AS exists
+  `;
+  return exists;
+}
+
 /** 기존 DB baseline: 실제 객체로 검증. 없으면 스킵 등록하지 않음 → 이후 적용. */
 async function isAlreadyApplied(sql, file) {
   if (/^00[1-8]_/.test(file)) return true;
@@ -197,6 +208,20 @@ async function isAlreadyApplied(sql, file) {
     return (
       (await colExists(sql, "applicants", "photo_thumbs")) &&
       (await fnBodyContains(sql, "submit_application", "photo_thumbs"))
+    );
+  }
+  if (file === "023_ops_hardening.sql") {
+    return (
+      (await colExists(sql, "applicants", "deleted_at")) &&
+      (await fnExists(sql, "admin_claim_sms_send")) &&
+      (await tableExists(sql, "applicant_sessions")) &&
+      (await tableExists(sql, "sms_logs"))
+    );
+  }
+  if (file === "024_ops_safety_followup.sql") {
+    return (
+      (await fnBodyContains(sql, "admin_claim_sms_send", "uncertain")) &&
+      (await fnExists(sql, "admin_list_orphan_storage_objects"))
     );
   }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음

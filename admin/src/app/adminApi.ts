@@ -145,14 +145,25 @@ export const adminApi = {
     }
   },
 
-  async sendSms(applicantId: string, text?: string, subject?: string): Promise<void> {
+  async sendSms(
+    applicantId: string,
+    text?: string,
+    subject?: string,
+    opts?: { force?: boolean },
+  ): Promise<{ already_sent?: boolean; provider_message_id?: string | null }> {
     const token = typeof window !== "undefined" ? localStorage.getItem(ADMIN_TOKEN_KEY) : null;
     if (!token) {
       throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
     }
 
     const { data, error } = await getClient().functions.invoke("send-sms", {
-      body: { applicant_id: applicantId, text, subject, admin_token: token },
+      body: {
+        applicant_id: applicantId,
+        text,
+        subject,
+        admin_token: token,
+        force: !!opts?.force,
+      },
       headers: { "x-admin-token": token },
     });
 
@@ -161,7 +172,6 @@ export const adminApi = {
         throw new Error("SMS 기능이 아직 배포되지 않았습니다. Supabase에서 send-sms 함수를 배포해 주세요.");
       }
 
-      // Edge Function이 4xx/5xx를 주면 본문({ error })을 꺼내 보여줌
       const ctx = (error as { context?: Response }).context;
       if (ctx && typeof ctx.json === "function") {
         try {
@@ -177,9 +187,29 @@ export const adminApi = {
       throw new Error(error.message || "문자 전송에 실패했습니다.");
     }
 
-    const result = data as { ok?: boolean; error?: string } | null;
+    const result = data as {
+      ok?: boolean;
+      error?: string;
+      already_sent?: boolean;
+      provider_message_id?: string | null;
+    } | null;
     if (result?.error) throw new Error(result.error);
     if (!result?.ok) throw new Error("문자 전송에 실패했습니다.");
+    return {
+      already_sent: !!result.already_sent,
+      provider_message_id: result.provider_message_id ?? null,
+    };
+  },
+
+  async listSmsLogs(applicantId: string) {
+    const { data, error } = await getClient().rpc("admin_list_sms_logs", {
+      p_applicant_id: applicantId,
+    });
+    if (error) {
+      if (error.code === "PGRST202") return [];
+      throw error;
+    }
+    return data ?? [];
   },
 
   async deleteApplicant(id: string): Promise<void> {
