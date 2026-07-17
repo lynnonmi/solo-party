@@ -7,7 +7,7 @@ import { FormField, FInput } from "./ui";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, loungeResponseLabel, matchPersonResponse } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, loungeResponseLabel, matchPersonResponse, summarizeMatches } from "./utils";
 import { LoungeEntryCheck } from "./LoungeEntryCheck";
 
 type View = "login" | "admin";
@@ -738,6 +738,19 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       {tab === "matching" && (
         <div className="px-4">
           {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 text-center mb-3"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
+          {(() => {
+            const s = summarizeMatches(matches);
+            return (
+              <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-3 mb-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-center"><p className="text-xl font-bold text-foreground">{s.total}</p><p className="text-[11px] text-muted-foreground mt-0.5">매칭</p></div>
+                  <div className="text-center"><p className="text-xl font-bold text-green-400">{s.willEnter}</p><p className="text-[11px] text-muted-foreground mt-0.5">입장 의사</p></div>
+                  <div className="text-center"><p className="text-xl font-bold text-amber-400">{s.notEntered}</p><p className="text-[11px] text-muted-foreground mt-0.5">미입장</p></div>
+                  <div className="text-center"><p className="text-xl font-bold text-primary">{s.entered}</p><p className="text-[11px] text-muted-foreground mt-0.5">입장 완료</p></div>
+                </div>
+              </div>
+            );
+          })()}
           {matches.length === 0 && settings.is_closed && <p className="text-center text-muted-foreground text-sm py-12">매칭된 쌍이 없습니다.</p>}
           <div className="grid grid-cols-1 gap-2">
           {matches.map((m, idx) => {
@@ -1530,6 +1543,19 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
           <div className="flex-1 overflow-y-auto p-6">
             <h2 className="text-base font-semibold mb-4">매칭 현황 ({matches.length}쌍)</h2>
             {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
+            {(() => {
+              const s = summarizeMatches(matches);
+              return (
+                <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4 mb-4">
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="text-center"><p className="text-2xl font-bold text-foreground">{s.total}</p><p className="text-xs text-muted-foreground mt-1">매칭</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-green-400">{s.willEnter}</p><p className="text-xs text-muted-foreground mt-1">입장 의사</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-amber-400">{s.notEntered}</p><p className="text-xs text-muted-foreground mt-1">미입장</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-primary">{s.entered}</p><p className="text-xs text-muted-foreground mt-1">입장 완료</p></div>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-2 gap-3">
               {matches.map((m, idx) => {
                 const u1 = apps.find(a => a.id === m.user1_id);

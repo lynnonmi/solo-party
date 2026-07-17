@@ -88,6 +88,29 @@ export function matchPersonResponse(
   return "pending";
 }
 
+export function summarizeMatches(
+  matches: { user1_response: string; user2_response: string; lounge_entered: boolean }[],
+) {
+  let willEnter = 0;
+  let waiting = 0;
+  let rejected = 0;
+  let entered = 0;
+  for (const m of matches) {
+    if (m.user1_response === "not_going" || m.user2_response === "not_going") rejected += 1;
+    else if (m.user1_response === "going" && m.user2_response === "going") willEnter += 1;
+    else waiting += 1;
+    if (m.lounge_entered) entered += 1;
+  }
+  return {
+    total: matches.length,
+    willEnter,
+    waiting,
+    rejected,
+    entered,
+    notEntered: matches.length - entered,
+  };
+}
+
 /** O(v+a) vote tally — avoids per-applicant filter/find loops */
 export function buildVoteLeaderboard(
   approved: Application[],
