@@ -321,7 +321,7 @@ export const adminApi = {
     }
   },
 
-  async clearVoteData(): Promise<{ deleted_votes: number; deleted_submissions: number; deleted_matches: number }> {
+  async clearVoteData(): Promise<{ deleted_votes: number; deleted_submissions: number; deleted_matches: number; deleted_offline_matches: number }> {
     const { data, error } = await getClient().rpc("admin_clear_vote_data", {
       p_confirm: "DELETE_ALL_VOTES",
     });
@@ -343,6 +343,7 @@ export const adminApi = {
       deleted_votes: Number(result.deleted_votes ?? 0),
       deleted_submissions: Number(result.deleted_submissions ?? 0),
       deleted_matches: Number(result.deleted_matches ?? 0),
+      deleted_offline_matches: Number(result.deleted_offline_matches ?? 0),
     };
   },
 

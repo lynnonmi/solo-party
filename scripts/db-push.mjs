@@ -257,6 +257,9 @@ async function isAlreadyApplied(sql, file) {
       (await fnExists(sql, "admin_toggle_offline_match_entered"))
     );
   }
+  if (file === "032_clear_offline_matches.sql") {
+    return fnBodyContains(sql, "admin_clear_vote_data", "offline_matches RESTART IDENTITY");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

@@ -484,6 +484,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         // refresh 전에 즉시 비워서 이전 투표·쪽지·매칭이 화면에 남지 않게 함
         setSubs([]);
         setMatches([]);
+        setOfflineMatches([]);
       }
       setVoteConfirm(null);
       await refresh();
@@ -998,7 +999,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭·라운지 응답·입장 체크가 모두 지워집니다. 투표·쪽지 데이터는 유지됩니다.</>}
-              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
+              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭·오프라인 투표를 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
             </p>
             {voteActionError && <p className="text-xs text-destructive mb-3">{voteActionError}</p>}
             <div className="flex gap-2">
@@ -1257,6 +1258,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         await adminApi.clearVoteData();
         setSubs([]);
         setMatches([]);
+        setOfflineMatches([]);
       }
       setVoteConfirm(null);
       await refresh();
@@ -1827,7 +1829,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭·라운지 응답·입장 체크가 모두 지워집니다. 투표·쪽지 데이터는 유지됩니다.</>}
-              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭을 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
+              {voteConfirm === "clear" && <>모든 투표·쪽지·매칭·오프라인 투표를 삭제합니다. 이 작업은 되돌릴 수 없습니다.</>}
             </p>
             {voteActionError && <p className="text-xs text-destructive mb-3">{voteActionError}</p>}
             <div className="flex gap-2">
