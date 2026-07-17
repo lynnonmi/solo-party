@@ -193,7 +193,12 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       await adminApi.updateStatus(id, status);
       if (status === "approved" || status === "rejected") {
         const t = apps.find(a => a.id === id);
-        if (t) setSmsModal({ ...t, status });
+        if (t) {
+          setSmsError("");
+          setSmsInfo("");
+          setSmsForce(false);
+          setSmsModal({ ...t, status, smsSent: false });
+        }
       }
       refresh();
     } catch (e) {
@@ -213,7 +218,10 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     setRejectError("");
     try {
       await adminApi.updateStatus(rejectModal.id, "rejected");
-      setSmsModal({ ...rejectModal, status: "rejected" });
+      setSmsError("");
+      setSmsInfo("");
+      setSmsForce(false);
+      setSmsModal({ ...rejectModal, status: "rejected", smsSent: false });
       setRejectModal(null);
       await refresh();
     } catch (e) {
@@ -509,7 +517,11 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{a.name}</span>
                         <span className="text-xs text-muted-foreground">({a.nickname})</span>
-                        {a.smsSent && <MessageSquare className="w-3 h-3 text-green-400" />}
+                        {a.smsSent
+                          ? <MessageSquare className="w-3 h-3 text-green-400" />
+                          : (a.status === "approved" || a.status === "rejected") && (
+                            <span className="text-[10px] text-amber-400 font-medium">문자 미발송</span>
+                          )}
                         {a.depositConfirmed && <Banknote className="w-3 h-3 text-green-400" />}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {formatAge(a.age)} · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
@@ -577,12 +589,20 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                         </div>
                       )}
                       {(a.status === "approved" || a.status === "rejected") && (
-                        <button onClick={() => setSmsModal(a)} className={`w-full py-2.5 rounded-xl text-sm font-medium border flex items-center justify-center gap-2 transition-colors ${a.smsSent?"border-green-500/40 text-green-400":"border-primary/40 text-primary hover:bg-primary/8"}`}>
-                          <MessageSquare className="w-4 h-4" />
-                          {a.smsSent
-                            ? `${getSmsKindLabel(a.status)} SMS 발송 완료`
-                            : `${getSmsKindLabel(a.status)} SMS 발송하기`}
-                        </button>
+                        a.smsSent ? (
+                          <div className="w-full py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 flex items-center justify-center gap-2">
+                            <MessageSquare className="w-4 h-4" />
+                            {getSmsKindLabel(a.status)} 문자 발송됨
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setSmsError(""); setSmsInfo(""); setSmsForce(false); setSmsModal(a); }}
+                            className="w-full py-2.5 rounded-xl text-sm font-medium border border-primary/40 text-primary hover:bg-primary/8 flex items-center justify-center gap-2 transition-colors"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                            {getSmsKindLabel(a.status)} 문자 보내기
+                          </button>
+                        )
                       )}
                       <button onClick={() => { setDeleteError(""); setDeleteModal(a); }} className="w-full py-2.5 rounded-xl text-sm font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors flex items-center justify-center gap-2">
                         <Trash2 className="w-4 h-4" /> 신청자 삭제
@@ -754,10 +774,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       {smsModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => setSmsModal(null)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => !smsSending && setSmsModal(null)}>
           <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">{getSmsKindLabel(smsModal.status)} SMS 발송</h3>
-            <p className="text-xs text-muted-foreground mb-4">{smsModal.name} ({smsModal.nickname})님에게 {getSmsKindLabel(smsModal.status)} 문자를 발송합니다.</p>
+            <h3 className="font-semibold mb-1">{getSmsKindLabel(smsModal.status)} 문자를 보내시겠습니까?</h3>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              {smsModal.name} ({smsModal.nickname})님은 이미 {getSmsKindLabel(smsModal.status)} 처리되었습니다.
+              문자를 보내려면 「문자 보내기」를, 문자 없이 마치려면 「닫기」를 눌러 주세요.
+            </p>
             <div className="bg-secondary rounded-xl p-4 mb-4 space-y-2 text-sm max-h-64 overflow-y-auto">
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">제목</span><span>{getSmsSubject(smsModal.status)}</span></div>
@@ -765,13 +788,9 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             </div>
             {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
             {smsInfo && <p className="text-xs text-amber-400 mb-3">{smsInfo}</p>}
-            <label className="flex items-center gap-2 text-xs text-muted-foreground mb-3 cursor-pointer">
-              <input type="checkbox" checked={smsForce} onChange={(e) => setSmsForce(e.target.checked)} className="rounded border-border" />
-              강제 재발송 (이미 보낸 경우에도 다시 전송)
-            </label>
             <div className="flex gap-2">
               <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
-                {smsSending ? "전송 중..." : smsForce ? "강제 재발송" : "문자 전송"}
+                {smsSending ? "전송 중..." : "문자 보내기"}
               </button>
               <button onClick={() => { setSmsModal(null); setSmsError(""); setSmsInfo(""); setSmsForce(false); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">닫기</button>
             </div>
@@ -945,10 +964,15 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const updateStatus = async (id: string, status: AppStatus) => {
     try {
       await adminApi.updateStatus(id, status);
-      if (selected?.id === id) setSelected(u => u ? { ...u, status } : u);
+      if (selected?.id === id) setSelected(u => u ? { ...u, status, smsSent: false } : u);
       if (status === "approved" || status === "rejected") {
         const t = apps.find(a => a.id === id);
-        if (t) setSmsModal({ ...t, status });
+        if (t) {
+          setSmsError("");
+          setSmsInfo("");
+          setSmsForce(false);
+          setSmsModal({ ...t, status, smsSent: false });
+        }
       }
       refresh();
     } catch (e) {
@@ -966,8 +990,11 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     setRejectError("");
     try {
       await adminApi.updateStatus(rejectModal.id, "rejected");
-      if (selected?.id === rejectModal.id) setSelected(u => u ? { ...u, status: "rejected" } : u);
-      setSmsModal({ ...rejectModal, status: "rejected" });
+      if (selected?.id === rejectModal.id) setSelected(u => u ? { ...u, status: "rejected", smsSent: false } : u);
+      setSmsError("");
+      setSmsInfo("");
+      setSmsForce(false);
+      setSmsModal({ ...rejectModal, status: "rejected", smsSent: false });
       setRejectModal(null);
       await refresh();
     } catch (e) {
@@ -1285,7 +1312,13 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                             ? <span className="text-green-400 text-xs font-medium">확인</span>
                             : <span className="text-amber-400 text-xs">미확인</span>}
                         </td>
-                        <td className="px-4 py-3">{a.smsSent ? <span className="text-green-400 text-xs">발송</span> : <span className="text-muted-foreground text-xs">-</span>}</td>
+                        <td className="px-4 py-3">
+                          {a.status === "approved" || a.status === "rejected"
+                            ? (a.smsSent
+                              ? <span className="text-green-400 text-xs">발송</span>
+                              : <span className="text-amber-400 text-xs">미발송</span>)
+                            : <span className="text-muted-foreground text-xs">-</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1363,12 +1396,20 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     </div>
                   )}
                   {(selected.status === "approved" || selected.status === "rejected") && (
-                    <button onClick={() => setSmsModal(selected)} className={`w-full py-2 rounded-lg text-xs font-medium border flex items-center justify-center gap-1.5 ${selected.smsSent?"border-green-500/40 text-green-400":"border-primary/40 text-primary hover:bg-primary/8"}`}>
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      {selected.smsSent
-                        ? `${getSmsKindLabel(selected.status)} SMS 완료`
-                        : `${getSmsKindLabel(selected.status)} SMS 발송`}
-                    </button>
+                    selected.smsSent ? (
+                      <div className="w-full py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 flex items-center justify-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        {getSmsKindLabel(selected.status)} 문자 발송됨
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setSmsError(""); setSmsInfo(""); setSmsForce(false); setSmsModal(selected); }}
+                        className="w-full py-2 rounded-lg text-xs font-medium border border-primary/40 text-primary hover:bg-primary/8 flex items-center justify-center gap-1.5"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        {getSmsKindLabel(selected.status)} 문자 보내기
+                      </button>
+                    )
                   )}
                   <button onClick={() => { setDeleteError(""); setDeleteModal(selected); }} className="w-full py-2 rounded-lg text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1.5">
                     <Trash2 className="w-3.5 h-3.5" /> 신청자 삭제
@@ -1545,10 +1586,13 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       )}
 
       {smsModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setSmsModal(null)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => !smsSending && setSmsModal(null)}>
           <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">{getSmsKindLabel(smsModal.status)} SMS 발송</h3>
-            <p className="text-xs text-muted-foreground mb-4">{smsModal.name} ({smsModal.nickname})님에게 {getSmsKindLabel(smsModal.status)} 문자를 발송합니다.</p>
+            <h3 className="font-semibold mb-1">{getSmsKindLabel(smsModal.status)} 문자를 보내시겠습니까?</h3>
+            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+              {smsModal.name} ({smsModal.nickname})님은 이미 {getSmsKindLabel(smsModal.status)} 처리되었습니다.
+              문자를 보내려면 「문자 보내기」를, 문자 없이 마치려면 「닫기」를 눌러 주세요.
+            </p>
             <div className="bg-secondary rounded-xl p-4 mb-4 space-y-2 text-sm max-h-64 overflow-y-auto">
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">수신자</span><span>{smsModal.contact}</span></div>
               <div className="flex gap-3"><span className="text-muted-foreground shrink-0">제목</span><span>{getSmsSubject(smsModal.status)}</span></div>
@@ -1556,13 +1600,9 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
             </div>
             {smsError && <p className="text-xs text-destructive mb-3">{smsError}</p>}
             {smsInfo && <p className="text-xs text-amber-400 mb-3">{smsInfo}</p>}
-            <label className="flex items-center gap-2 text-xs text-muted-foreground mb-3 cursor-pointer">
-              <input type="checkbox" checked={smsForce} onChange={(e) => setSmsForce(e.target.checked)} className="rounded border-border" />
-              강제 재발송 (이미 보낸 경우에도 다시 전송)
-            </label>
             <div className="flex gap-2">
               <button onClick={sendSms} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50">
-                {smsSending ? "전송 중..." : smsForce ? "강제 재발송" : "문자 전송"}
+                {smsSending ? "전송 중..." : "문자 보내기"}
               </button>
               <button onClick={() => { setSmsModal(null); setSmsError(""); setSmsInfo(""); setSmsForce(false); }} disabled={smsSending} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">닫기</button>
             </div>
