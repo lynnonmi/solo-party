@@ -12,6 +12,23 @@ import { LoungeEntryCheck } from "./LoungeEntryCheck";
 
 type View = "login" | "admin";
 
+const ADMIN_SCREEN_KEY = "sp_admin_screen";
+
+function getSavedMobileTab(): AdminTab {
+  if (typeof window === "undefined") return "apps";
+  const screen = localStorage.getItem(ADMIN_SCREEN_KEY);
+  if (screen === "vote-management") return "vote";
+  if (screen === "matching") return "matching";
+  return "apps";
+}
+
+function getSavedPCSection(): PCSection {
+  if (typeof window === "undefined") return "applications";
+  const screen = localStorage.getItem(ADMIN_SCREEN_KEY);
+  if (screen === "vote-management" || screen === "matching") return screen;
+  return "applications";
+}
+
 export default function App() {
   const [view, setView] = useState<View>("login");
 
@@ -98,7 +115,7 @@ function AdminPage({ onLogout }: { onLogout: () => void }) {
 
 /* ─── MOBILE ADMIN ─── */
 function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
-  const [tab, setTab] = useState<AdminTab>("apps");
+  const [tab, setTab] = useState<AdminTab>(getSavedMobileTab);
   const [apps, setApps] = useState<Application[]>([]);
   const [subs, setSubs] = useState<{ voter_id: string; voted_for_id: string; message: string }[]>([]);
   const [matches, setMatches] = useState<{
@@ -132,6 +149,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [refundError, setRefundError] = useState("");
   const [refundActing, setRefundActing] = useState(false);
   const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ADMIN_SCREEN_KEY,
+      tab === "vote" ? "vote-management" : tab === "matching" ? "matching" : "applications",
+    );
+  }, [tab]);
 
   const refresh = async () => {
     const ok = await adminApi.verifySession();
@@ -847,7 +871,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
 
 /* ─── PC ADMIN ─── */
 function PCAdminPage({ onLogout }: { onLogout: () => void }) {
-  const [section, setSection] = useState<PCSection>("applications");
+  const [section, setSection] = useState<PCSection>(getSavedPCSection);
   const [apps, setApps] = useState<Application[]>([]);
   const [subs, setSubs] = useState<{ voter_id: string; voted_for_id: string; message: string }[]>([]);
   const [matches, setMatches] = useState<{
@@ -877,6 +901,10 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [depositToggling, setDepositToggling] = useState(false);
   const [photoModal, setPhotoModal] = useState<string[] | null>(null);
   const [photoIdx, setPhotoIdx] = useState(0);
+
+  useEffect(() => {
+    localStorage.setItem(ADMIN_SCREEN_KEY, section);
+  }, [section]);
   const [voteConfirm, setVoteConfirm] = useState<null | "open" | "close" | "unclose" | "clear">(null);
   const [voteActionError, setVoteActionError] = useState("");
   const [voteActing, setVoteActing] = useState(false);
