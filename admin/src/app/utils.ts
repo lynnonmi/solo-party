@@ -91,6 +91,7 @@ export function buildVoteLeaderboard(
       const voters = votersByTarget.get(a.id) || [];
       return { ...a, count: voters.length, voters };
     })
+    .filter(a => a.count > 0)
     .sort((a, b) => b.count - a.count);
 }
 

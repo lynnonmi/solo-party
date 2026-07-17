@@ -673,8 +673,15 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">투표 결과</p>
             <div className="space-y-2">
-              {buildVoteLeaderboard(approved, subs, apps, "알 수 없음")
-                .map((a,i) => (
+              {(() => {
+                const board = buildVoteLeaderboard(approved, subs, apps, "알 수 없음");
+                if (!approved.length) {
+                  return <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>;
+                }
+                if (!board.length) {
+                  return <p className="text-center text-muted-foreground text-sm py-6">투표 결과가 없습니다.</p>;
+                }
+                return board.map((a, i) => (
                   <div key={a.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl p-3.5 flex items-center gap-3">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${i===0?"bg-primary/20 text-primary":i===1?"bg-slate-400/20 text-slate-400":i===2?"bg-orange-600/20 text-orange-500":"bg-muted text-muted-foreground"}`}>{i+1}</div>
                     <div className="flex-1 min-w-0">
@@ -683,8 +690,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                     </div>
                     <div className="flex items-center gap-1 shrink-0"><Heart className="w-3.5 h-3.5 fill-primary text-primary" /><span className="font-bold text-sm text-primary">{a.count}</span></div>
                   </div>
-                ))}
-              {!approved.length && <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>}
+                ));
+              })()}
             </div>
           </div>
         </div>
@@ -1431,30 +1438,39 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
 
             <h3 className="text-sm font-semibold mb-3">투표 결과</h3>
             <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">순위</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">닉네임</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">성별</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">득표수</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">투표자</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {buildVoteLeaderboard(approved, subs, apps)
-                    .map((a,i) => (
-                      <tr key={a.id} className="border-b border-border last:border-0">
-                        <td className="px-4 py-3 font-medium text-muted-foreground">{i+1}</td>
-                        <td className="px-4 py-3 font-medium">{a.nickname}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{a.gender}</td>
-                        <td className="px-4 py-3"><span className="text-primary font-semibold">{a.count}</span></td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{a.voters.join(", ") || "-"}</td>
+              {(() => {
+                const board = buildVoteLeaderboard(approved, subs, apps);
+                if (!approved.length) {
+                  return <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>;
+                }
+                if (!board.length) {
+                  return <p className="text-center text-muted-foreground text-sm py-6">투표 결과가 없습니다.</p>;
+                }
+                return (
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-border">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">순위</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">닉네임</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">성별</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">득표수</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">투표자</th>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
-              {!approved.length && <p className="text-center text-muted-foreground text-sm py-6">승인된 참가자가 없습니다.</p>}
+                    </thead>
+                    <tbody>
+                      {board.map((a, i) => (
+                        <tr key={a.id} className="border-b border-border last:border-0">
+                          <td className="px-4 py-3 font-medium text-muted-foreground">{i + 1}</td>
+                          <td className="px-4 py-3 font-medium">{a.nickname}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{a.gender}</td>
+                          <td className="px-4 py-3"><span className="text-primary font-semibold">{a.count}</span></td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">{a.voters.join(", ") || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           </div>
         )}
