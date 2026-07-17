@@ -7,7 +7,7 @@ import { FormField, FInput } from "./ui";
 import {
   Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
 } from "./types";
-import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard } from "./utils";
+import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, loungeResponseLabel, matchPersonResponse } from "./utils";
 import { LoungeEntryCheck } from "./LoungeEntryCheck";
 
 type View = "login" | "admin";
@@ -715,17 +715,19 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         <div className="px-4">
           {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 text-center mb-3"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
           {matches.length === 0 && settings.is_closed && <p className="text-center text-muted-foreground text-sm py-12">매칭된 쌍이 없습니다.</p>}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2">
           {matches.map((m, idx) => {
             const u1 = apps.find(a => a.id === m.user1_id);
             const u2 = apps.find(a => a.id === m.user2_id);
             const maleApp = u1?.gender === "남성" ? u1 : u2;
             const femaleApp = u1?.gender === "여성" ? u1 : u2;
+            const maleRes = loungeResponseLabel(matchPersonResponse(m, maleApp?.id));
+            const femaleRes = loungeResponseLabel(matchPersonResponse(m, femaleApp?.id));
             const st = getMatchStatusFromRow(m);
             const stLabel = { pending: "대기", success: "성사", closed: "종료" };
             const stColor = { pending: "text-amber-400", success: "text-green-400", closed: "text-muted-foreground" };
             return (
-              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-3 py-3.5">
+              <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-3 py-3.5 space-y-2.5">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                     {idx + 1}
@@ -741,6 +743,16 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                     />
                   </div>
                   <span className={`text-xs font-medium shrink-0 ${stColor[st]}`}>{stLabel[st]}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pl-8">
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground truncate">{maleApp?.nickname || "-"}</p>
+                    <p className={`text-xs font-medium ${maleRes.className}`}>{maleRes.text}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground truncate">{femaleApp?.nickname || "-"}</p>
+                    <p className={`text-xs font-medium ${femaleRes.className}`}>{femaleRes.text}</p>
+                  </div>
                 </div>
               </div>
             );
@@ -1496,10 +1508,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 const u2 = apps.find(a => a.id === m.user2_id);
                 const maleApp = u1?.gender === "남성" ? u1 : u2;
                 const femaleApp = u1?.gender === "여성" ? u1 : u2;
+                const maleRes = loungeResponseLabel(matchPersonResponse(m, maleApp?.id));
+                const femaleRes = loungeResponseLabel(matchPersonResponse(m, femaleApp?.id));
                 const st = getMatchStatusFromRow(m);
                 const stEl = { pending: <span className="text-amber-400 text-sm font-medium">대기</span>, success: <span className="text-green-400 text-sm font-medium">성사</span>, closed: <span className="text-muted-foreground text-sm">종료</span> };
                 return (
-                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-4 py-4">
+                  <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-4 py-4 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-sm font-bold shrink-0">
                         {idx + 1}
@@ -1515,6 +1529,16 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         />
                       </div>
                       {stEl[st]}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pl-10">
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground truncate">{maleApp?.nickname || "-"}</p>
+                        <p className={`text-sm font-medium ${maleRes.className}`}>{maleRes.text}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground truncate">{femaleApp?.nickname || "-"}</p>
+                        <p className={`text-sm font-medium ${femaleRes.className}`}>{femaleRes.text}</p>
+                      </div>
                     </div>
                   </div>
                 );

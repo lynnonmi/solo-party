@@ -71,6 +71,23 @@ export function statusLabel(status: AppStatus): string {
   return map[status];
 }
 
+/** 매칭 라운지 응답: going=입장, pending=미응답, not_going=거절 */
+export function loungeResponseLabel(response: string): { text: string; className: string } {
+  if (response === "going") return { text: "입장", className: "text-green-400" };
+  if (response === "not_going") return { text: "거절", className: "text-destructive" };
+  return { text: "미응답", className: "text-amber-400" };
+}
+
+export function matchPersonResponse(
+  match: { user1_id: string; user2_id: string; user1_response: string; user2_response: string },
+  personId: string | undefined,
+): string {
+  if (!personId) return "pending";
+  if (personId === match.user1_id) return match.user1_response;
+  if (personId === match.user2_id) return match.user2_response;
+  return "pending";
+}
+
 /** O(v+a) vote tally — avoids per-applicant filter/find loops */
 export function buildVoteLeaderboard(
   approved: Application[],
