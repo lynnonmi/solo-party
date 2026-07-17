@@ -340,8 +340,18 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const toggleGenderOpen = async (gender: Gender) => {
     if (!settings) return;
     const current = gender === "남성" ? settings.male_open : settings.female_open;
-    await adminApi.toggleGenderOpen(gender, !current);
-    refresh();
+    const next = !current;
+    if (next && settings.is_open && !settings.is_closed) {
+      setVoteActionError("투표가 열린 동안에는 신청 접수를 다시 열 수 없습니다.");
+      return;
+    }
+    try {
+      await adminApi.toggleGenderOpen(gender, next);
+      setVoteActionError("");
+      refresh();
+    } catch (e) {
+      setVoteActionError(e instanceof Error ? e.message : "신청 접수 설정 실패");
+    }
   };
 
   const toggleVoteClosed = () => {
@@ -363,7 +373,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         await adminApi.toggleVoteClosed(false);
       } else if (voteConfirm === "clear") {
         await adminApi.clearVoteData();
-        // refresh 전에 즉시 비워서 이전 투표/쪽지/매칭이 화면에 남지 않게 함
+        // refresh 전에 즉시 비워서 이전 투표·쪽지·매칭이 화면에 남지 않게 함
         setSubs([]);
         setMatches([]);
       }
@@ -1097,8 +1107,18 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const toggleGenderOpen = async (gender: Gender) => {
     if (!settings) return;
     const current = gender === "남성" ? settings.male_open : settings.female_open;
-    await adminApi.toggleGenderOpen(gender, !current);
-    refresh();
+    const next = !current;
+    if (next && settings.is_open && !settings.is_closed) {
+      setVoteActionError("투표가 열린 동안에는 신청 접수를 다시 열 수 없습니다.");
+      return;
+    }
+    try {
+      await adminApi.toggleGenderOpen(gender, next);
+      setVoteActionError("");
+      refresh();
+    } catch (e) {
+      setVoteActionError(e instanceof Error ? e.message : "신청 접수 설정 실패");
+    }
   };
 
   const toggleVoteClosed = () => {

@@ -233,6 +233,9 @@ async function isAlreadyApplied(sql, file) {
   if (file === "027_reset_sms_sent_on_status_change.sql") {
     return fnBodyContains(sql, "admin_update_status", "sms_sent = CASE WHEN v_prev");
   }
+  if (file === "028_vote_open_closes_intake.sql") {
+    return fnBodyContains(sql, "admin_toggle_gender_open", "vote already open");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

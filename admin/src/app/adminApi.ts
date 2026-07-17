@@ -335,7 +335,15 @@ export const adminApi = {
       p_gender: gender,
       p_open: open,
     });
-    if (error) throw error;
+    if (error) {
+      if (error.message?.includes("unauthorized")) {
+        throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+      if (error.message?.includes("vote already open")) {
+        throw new Error("투표가 열린 동안에는 신청 접수를 다시 열 수 없습니다.");
+      }
+      throw new Error(error.message || "신청 접수 설정에 실패했습니다.");
+    }
   },
 
   async toggleVoteClosed(closed: boolean): Promise<void> {
