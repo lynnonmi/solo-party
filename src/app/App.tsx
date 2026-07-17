@@ -514,20 +514,21 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
   const intakeOpen = settings.maleOpen || settings.femaleOpen;
   const voteRunning = settings.isOpen;
 
-  const firstLabel = voteRunning
-    ? "내 신청서 확인하기"
-    : intakeOpen
-      ? "참가 신청하기"
+  // 남/여 중 하나라도 접수 중이면 참가 신청 노출 (투표 오픈 여부와 무관)
+  const firstLabel = intakeOpen
+    ? "참가 신청하기"
+    : voteRunning
+      ? "내 신청서 확인하기"
       : "신청 마감";
   const firstAction = () => {
-    if (voteRunning) {
+    if (intakeOpen) {
+      go("apply");
+    } else if (voteRunning) {
       if (hasVoter) go("my-app");
       else go("vote-login");
-    } else if (intakeOpen) {
-      go("apply");
     }
   };
-  const firstDisabled = !voteRunning && !intakeOpen;
+  const firstDisabled = !intakeOpen && !voteRunning;
 
   const buttons = (
     <div className="space-y-3 w-full">

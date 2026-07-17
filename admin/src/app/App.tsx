@@ -321,6 +321,10 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       })();
       return;
     }
+    if (settings.male_open || settings.female_open) {
+      setVoteActionError("남·여 신청 접수를 모두 마감한 뒤에만 투표를 열 수 있습니다.");
+      return;
+    }
     setVoteActionError("");
     setVoteConfirm("open");
   };
@@ -621,7 +625,13 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold text-sm">투표 오픈</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{settings.is_open ? "참가자들이 투표할 수 있습니다" : "투표가 닫혀 있습니다"}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {settings.is_open
+                    ? "참가자들이 투표할 수 있습니다"
+                    : settings.male_open || settings.female_open
+                      ? "남·여 신청 접수 모두 마감 후 가능"
+                      : "투표가 닫혀 있습니다"}
+                </p>
               </div>
               <button onClick={toggleVoteOpen} disabled={settings.is_closed}
                 className={`relative w-12 h-6 rounded-full transition-colors ${settings.is_open ? "bg-primary" : "bg-muted"} disabled:opacity-40`}>
@@ -818,7 +828,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             </h3>
             <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
               {voteConfirm === "open" && (
-                <>투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
+                <>남·여 신청 접수가 모두 마감된 상태에서 투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭·라운지 응답·입장 체크가 모두 지워집니다. 투표·쪽지 데이터는 유지됩니다.</>}
@@ -1047,6 +1057,10 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
           setVoteActionError(e instanceof Error ? e.message : "투표 설정 실패");
         }
       })();
+      return;
+    }
+    if (settings.male_open || settings.female_open) {
+      setVoteActionError("남·여 신청 접수를 모두 마감한 뒤에만 투표를 열 수 있습니다.");
       return;
     }
     setVoteActionError("");
@@ -1401,7 +1415,15 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${settings.is_open?"left-7":"left-1"}`} />
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground">{settings.is_closed ? "투표 마감됨" : settings.is_open ? "투표 진행 중" : "투표 대기 중"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {settings.is_closed
+                    ? "투표 마감됨"
+                    : settings.is_open
+                      ? "투표 진행 중"
+                      : settings.male_open || settings.female_open
+                        ? "남·여 신청 접수 모두 마감 후 가능"
+                        : "투표 대기 중"}
+                </p>
               </div>
               <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -1597,7 +1619,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
             </h3>
             <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
               {voteConfirm === "open" && (
-                <>투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
+                <>남·여 신청 접수가 모두 마감된 상태에서 투표를 엽니다. 기존 투표·쪽지 데이터는 유지됩니다. 처음부터 다시 하려면 「투표·쪽지 전체 초기화」를 사용하세요.</>
               )}
               {voteConfirm === "close" && <>마감하면 상호 투표로 매칭이 계산되고 결과가 공개됩니다. 투표 데이터는 유지됩니다.</>}
               {voteConfirm === "unclose" && <>마감을 취소합니다. 매칭·라운지 응답·입장 체크가 모두 지워집니다. 투표·쪽지 데이터는 유지됩니다.</>}

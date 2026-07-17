@@ -278,6 +278,12 @@ export const adminApi = {
       if (error.message?.includes("unauthorized")) {
         throw new Error("관리자 세션이 만료되었습니다. 다시 로그인해 주세요.");
       }
+      if (error.message?.includes("applications still open")) {
+        throw new Error("남·여 신청 접수를 모두 마감한 뒤에만 투표를 열 수 있습니다.");
+      }
+      if (error.message?.includes("vote already closed")) {
+        throw new Error("투표가 이미 마감되어 다시 열 수 없습니다.");
+      }
       throw new Error(error.message || "투표 오픈 설정에 실패했습니다.");
     }
   },

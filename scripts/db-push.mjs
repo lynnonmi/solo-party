@@ -227,6 +227,9 @@ async function isAlreadyApplied(sql, file) {
   if (file === "025_clear_vote_data_truncate.sql") {
     return fnBodyContains(sql, "admin_clear_vote_data", "TRUNCATE TABLE vote_votes");
   }
+  if (file === "026_vote_open_requires_intake_closed.sql") {
+    return fnBodyContains(sql, "admin_toggle_vote_open", "applications still open");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }
