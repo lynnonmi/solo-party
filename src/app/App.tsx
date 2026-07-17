@@ -1394,10 +1394,14 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       sb.rpc("get_my_votes"),
     ]);
     if (candRes.data) {
-      setCandidates(candRes.data.map((c: Record<string, string>) => ({
-        id: c.id, nickname: c.nickname, gender: c.gender as Gender,
-        voteProfilePhoto: c.vote_profile_photo ?? undefined,
-      })));
+      setCandidates(
+        candRes.data
+          .map((c: Record<string, string>) => ({
+            id: c.id, nickname: c.nickname, gender: c.gender as Gender,
+            voteProfilePhoto: c.vote_profile_photo ?? undefined,
+          }))
+          .sort((a, b) => a.nickname.localeCompare(b.nickname, "ko"))
+      );
     }
     const votes: Record<string, string> = {};
     (votesRes.data ?? []).forEach((v: { voted_for_id: string; message: string }) => {

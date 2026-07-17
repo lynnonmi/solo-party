@@ -239,6 +239,17 @@ async function isAlreadyApplied(sql, file) {
   if (file === "029_manual_refund_for_rejected.sql") {
     return fnBodyContains(sql, "admin_mark_refund_completed", "status IN ('rejected', 'refund_requested')");
   }
+  if (file === "030_vote_candidate_photo_fallback.sql") {
+    const [{ exists }] = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_views
+        WHERE schemaname = 'public'
+          AND viewname = 'approved_for_voting'
+          AND definition ILIKE '%photo_thumbs%'
+      ) AS exists
+    `;
+    return exists;
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }
