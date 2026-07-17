@@ -224,6 +224,9 @@ async function isAlreadyApplied(sql, file) {
       (await fnExists(sql, "admin_list_orphan_storage_objects"))
     );
   }
+  if (file === "025_clear_vote_data_truncate.sql") {
+    return fnBodyContains(sql, "admin_clear_vote_data", "TRUNCATE TABLE vote_votes");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

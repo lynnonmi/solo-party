@@ -351,6 +351,9 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         await adminApi.toggleVoteClosed(false);
       } else if (voteConfirm === "clear") {
         await adminApi.clearVoteData();
+        // refresh 전에 즉시 비워서 이전 투표/쪽지/매칭이 화면에 남지 않게 함
+        setSubs([]);
+        setMatches([]);
       }
       setVoteConfirm(null);
       await refresh();
@@ -1069,6 +1072,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         await adminApi.toggleVoteClosed(false);
       } else if (voteConfirm === "clear") {
         await adminApi.clearVoteData();
+        setSubs([]);
+        setMatches([]);
       }
       setVoteConfirm(null);
       await refresh();

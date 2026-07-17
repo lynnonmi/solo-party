@@ -282,8 +282,8 @@ export const adminApi = {
     }
   },
 
-  async clearVoteData(): Promise<void> {
-    const { error } = await getClient().rpc("admin_clear_vote_data", {
+  async clearVoteData(): Promise<{ deleted_votes: number; deleted_submissions: number; deleted_matches: number }> {
+    const { data, error } = await getClient().rpc("admin_clear_vote_data", {
       p_confirm: "DELETE_ALL_VOTES",
     });
     if (error) {
@@ -295,6 +295,16 @@ export const adminApi = {
       }
       throw new Error(error.message || "투표 데이터 삭제에 실패했습니다.");
     }
+    const result = (data ?? {}) as Record<string, unknown>;
+    // 구버전 RPC(void)도 허용. 신버전은 삭제 건수를 돌려줌.
+    if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+      throw new Error("투표 데이터 삭제에 실패했습니다.");
+    }
+    return {
+      deleted_votes: Number(result.deleted_votes ?? 0),
+      deleted_submissions: Number(result.deleted_submissions ?? 0),
+      deleted_matches: Number(result.deleted_matches ?? 0),
+    };
   },
 
   async verifySession(): Promise<boolean> {
