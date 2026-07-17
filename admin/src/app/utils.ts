@@ -90,6 +90,7 @@ export function matchPersonResponse(
 
 export function summarizeMatches(
   matches: { user1_response: string; user2_response: string; lounge_entered: boolean }[],
+  offlineMatches: { lounge_entered: boolean }[] = [],
 ) {
   let willEnter = 0;
   let waiting = 0;
@@ -101,13 +102,17 @@ export function summarizeMatches(
     else waiting += 1;
     if (m.lounge_entered) entered += 1;
   }
+  // 수기 등록은 입장 의사가 확인된 현장 매칭으로 집계
+  willEnter += offlineMatches.length;
+  entered += offlineMatches.filter(m => m.lounge_entered).length;
+  const total = matches.length + offlineMatches.length;
   return {
-    total: matches.length,
+    total,
     willEnter,
     waiting,
     rejected,
     entered,
-    notEntered: matches.length - entered,
+    notEntered: total - entered,
   };
 }
 

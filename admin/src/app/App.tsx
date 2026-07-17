@@ -5,7 +5,7 @@ import {
 import { adminApi } from "./adminApi";
 import { FormField, FInput } from "./ui";
 import {
-  Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection,
+  Application, AppStatus, Gender, GenderFilter, StatusFilter, AdminTab, PCSection, OfflineMatch,
 } from "./types";
 import { getSmsSubject, getSmsBody, getSmsKindLabel, getProfilePhoto, useIsPC, statusLabel, formatAge, buildVoteLeaderboard, loungeResponseLabel, matchPersonResponse, summarizeMatches } from "./utils";
 import { LoungeEntryCheck } from "./LoungeEntryCheck";
@@ -113,6 +113,113 @@ function AdminPage({ onLogout }: { onLogout: () => void }) {
   return isPC ? <PCAdminPage onLogout={onLogout} /> : <MobileAdminPage onLogout={onLogout} />;
 }
 
+function OfflineMatchesPanel({
+  matches,
+  onAdd,
+  onToggle,
+  onDelete,
+}: {
+  matches: OfflineMatch[];
+  onAdd: (person1: string, person2: string) => Promise<void>;
+  onToggle: (id: string, entered: boolean) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [person1, setPerson1] = useState("");
+  const [person2, setPerson2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const add = async () => {
+    const name1 = person1.trim();
+    const name2 = person2.trim();
+    if (!name1 || !name2) {
+      setError("두 사람의 이름을 모두 입력해 주세요.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onAdd(name1, name2);
+      setPerson1("");
+      setPerson2("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오프라인 투표 저장에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (id: string, entered: boolean) => {
+    setBusy(true);
+    setError("");
+    try {
+      await onToggle(id, entered);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "입장 여부 저장에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      await onDelete(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오프라인 투표 삭제에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold mb-3">오프라인 투표 ({matches.length}쌍)</h3>
+      <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-3 mb-3">
+        <div className="grid grid-cols-2 gap-2">
+          <FInput value={person1} maxLength={50} placeholder="첫 번째 사람 이름" onChange={(e) => { setPerson1(e.target.value); setError(""); }} />
+          <FInput value={person2} maxLength={50} placeholder="두 번째 사람 이름" onChange={(e) => { setPerson2(e.target.value); setError(""); }} onKeyDown={(e) => e.key === "Enter" && void add()} />
+        </div>
+        {error && <p className="text-xs text-destructive mt-2">{error}</p>}
+        <button
+          type="button"
+          onClick={() => { void add(); }}
+          disabled={busy}
+          className="w-full mt-2 py-2.5 rounded-xl text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+        >
+          {busy ? "저장 중..." : "오프라인 투표 추가"}
+        </button>
+      </div>
+      <div className="space-y-2">
+        {matches.map((m, idx) => (
+          <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-3 py-3 flex items-center gap-3">
+            <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+              {idx + 1}
+            </div>
+            <p className="font-semibold text-sm min-w-0 flex-1 truncate">{m.person1_name} · {m.person2_name}</p>
+            <LoungeEntryCheck
+              checked={m.lounge_entered}
+              disabled={busy}
+              onCheckedChange={(entered) => { void toggle(m.id, entered); }}
+            />
+            <button
+              type="button"
+              onClick={() => { void remove(m.id); }}
+              disabled={busy}
+              className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg disabled:opacity-50"
+              aria-label="오프라인 투표 삭제"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+        {!matches.length && <p className="text-center text-muted-foreground text-sm py-5">수기로 추가한 오프라인 투표가 없습니다.</p>}
+      </div>
+    </div>
+  );
+}
+
 /* ─── MOBILE ADMIN ─── */
 function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<AdminTab>(getSavedMobileTab);
@@ -123,6 +230,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     user1_response: string; user2_response: string;
     lounge_entered: boolean;
   }[]>([]);
+  const [offlineMatches, setOfflineMatches] = useState<OfflineMatch[]>([]);
   const [settings, setSettings] = useState<{
     is_open: boolean; is_closed: boolean; closed_at?: string;
     male_open: boolean; female_open: boolean;
@@ -165,10 +273,11 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       return;
     }
     try {
-      const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
+      const [appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
         adminApi.listApplicants(),
         adminApi.getVoteResults(),
         adminApi.getMatches(),
+        adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
       setApps(appsRaw.map((a: Record<string, unknown>) => ({
@@ -183,6 +292,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       })) as Application[]);
       setSubs(subsRaw);
       setMatches(matchesRaw);
+      setOfflineMatches(offlineRaw);
       setSettings(settingsRaw);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -396,6 +506,21 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
     } finally {
       setLoungeTogglingId(null);
     }
+  };
+
+  const addOfflineMatch = async (person1: string, person2: string) => {
+    await adminApi.addOfflineMatch(person1, person2);
+    setOfflineMatches(await adminApi.getOfflineMatches());
+  };
+
+  const toggleOfflineMatch = async (id: string, entered: boolean) => {
+    await adminApi.toggleOfflineMatchEntered(id, entered);
+    setOfflineMatches(prev => prev.map(m => m.id === id ? { ...m, lounge_entered: entered } : m));
+  };
+
+  const deleteOfflineMatch = async (id: string) => {
+    await adminApi.deleteOfflineMatch(id);
+    setOfflineMatches(prev => prev.filter(m => m.id !== id));
   };
 
   if (loading || !settings) {
@@ -739,7 +864,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         <div className="px-4">
           {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 text-center mb-3"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
           {(() => {
-            const s = summarizeMatches(matches);
+            const s = summarizeMatches(matches, offlineMatches);
             return (
               <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-3 mb-3">
                 <div className="grid grid-cols-2 gap-2">
@@ -795,6 +920,12 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             );
           })}
           </div>
+          <OfflineMatchesPanel
+            matches={offlineMatches}
+            onAdd={addOfflineMatch}
+            onToggle={toggleOfflineMatch}
+            onDelete={deleteOfflineMatch}
+          />
         </div>
       )}
 
@@ -892,6 +1023,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     user1_response: string; user2_response: string;
     lounge_entered: boolean;
   }[]>([]);
+  const [offlineMatches, setOfflineMatches] = useState<OfflineMatch[]>([]);
   const [settings, setSettings] = useState<{
     is_open: boolean; is_closed: boolean; closed_at?: string;
     male_open: boolean; female_open: boolean;
@@ -933,10 +1065,11 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       return;
     }
     try {
-      const [appsRaw, subsRaw, matchesRaw, settingsRaw] = await Promise.all([
+      const [appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
         adminApi.listApplicants(),
         adminApi.getVoteResults(),
         adminApi.getMatches(),
+        adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
       setApps(appsRaw.map((a: Record<string, unknown>) => ({
@@ -951,6 +1084,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       })) as Application[]);
       setSubs(subsRaw);
       setMatches(matchesRaw);
+      setOfflineMatches(offlineRaw);
       setSettings(settingsRaw);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -1165,6 +1299,21 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     } finally {
       setLoungeTogglingId(null);
     }
+  };
+
+  const addOfflineMatch = async (person1: string, person2: string) => {
+    await adminApi.addOfflineMatch(person1, person2);
+    setOfflineMatches(await adminApi.getOfflineMatches());
+  };
+
+  const toggleOfflineMatch = async (id: string, entered: boolean) => {
+    await adminApi.toggleOfflineMatchEntered(id, entered);
+    setOfflineMatches(prev => prev.map(m => m.id === id ? { ...m, lounge_entered: entered } : m));
+  };
+
+  const deleteOfflineMatch = async (id: string) => {
+    await adminApi.deleteOfflineMatch(id);
+    setOfflineMatches(prev => prev.filter(m => m.id !== id));
   };
 
   if (loading || !settings) {
@@ -1541,10 +1690,10 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
 
         {section === "matching" && (
           <div className="flex-1 overflow-y-auto p-6">
-            <h2 className="text-base font-semibold mb-4">매칭 현황 ({matches.length}쌍)</h2>
+            <h2 className="text-base font-semibold mb-4">매칭 현황 ({matches.length + offlineMatches.length}쌍)</h2>
             {!settings.is_closed && <div className="bg-muted/40 border border-border rounded-xl p-3 mb-4"><p className="text-sm text-muted-foreground">투표 마감 후 매칭 결과가 계산됩니다.</p></div>}
             {(() => {
-              const s = summarizeMatches(matches);
+              const s = summarizeMatches(matches, offlineMatches);
               return (
                 <div className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-4 mb-4">
                   <div className="grid grid-cols-4 gap-4">
@@ -1599,6 +1748,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
               })}
               {!matches.length && <p className="col-span-2 text-center text-muted-foreground text-sm py-8">매칭 데이터가 없습니다.</p>}
             </div>
+            <OfflineMatchesPanel
+              matches={offlineMatches}
+              onAdd={addOfflineMatch}
+              onToggle={toggleOfflineMatch}
+              onDelete={deleteOfflineMatch}
+            />
           </div>
         )}
       </div>

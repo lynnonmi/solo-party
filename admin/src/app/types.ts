@@ -5,6 +5,14 @@ export type StatusFilter = "전체" | "pending" | "approved" | "rejected" | "ref
 export type AdminTab = "apps" | "vote" | "matching";
 export type PCSection = "applications" | "vote-management" | "matching";
 
+export interface OfflineMatch {
+  id: string;
+  person1_name: string;
+  person2_name: string;
+  lounge_entered: boolean;
+  created_at: string;
+}
+
 export interface Application {
   id: string;
   name: string;

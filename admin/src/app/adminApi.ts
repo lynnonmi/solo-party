@@ -257,6 +257,39 @@ export const adminApi = {
     if (error) throw error;
   },
 
+  async getOfflineMatches() {
+    const { data, error } = await getClient().rpc("admin_list_offline_matches");
+    if (error) throw error;
+    return (data ?? []).map((m: Record<string, unknown>) => ({
+      id: String(m.id),
+      person1_name: String(m.person1_name ?? ""),
+      person2_name: String(m.person2_name ?? ""),
+      lounge_entered: !!m.lounge_entered,
+      created_at: String(m.created_at ?? ""),
+    }));
+  },
+
+  async addOfflineMatch(person1Name: string, person2Name: string): Promise<void> {
+    const { error } = await getClient().rpc("admin_add_offline_match", {
+      p_person1_name: person1Name,
+      p_person2_name: person2Name,
+    });
+    if (error) throw error;
+  },
+
+  async toggleOfflineMatchEntered(id: string, entered: boolean): Promise<void> {
+    const { error } = await getClient().rpc("admin_toggle_offline_match_entered", {
+      p_id: id,
+      p_entered: entered,
+    });
+    if (error) throw error;
+  },
+
+  async deleteOfflineMatch(id: string): Promise<void> {
+    const { error } = await getClient().rpc("admin_delete_offline_match", { p_id: id });
+    if (error) throw error;
+  },
+
   async getVoteSettings(): Promise<AdminVoteSettings> {
     const { data, error } = await getClient()
       .from("vote_settings")
