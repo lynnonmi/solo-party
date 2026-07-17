@@ -236,6 +236,9 @@ async function isAlreadyApplied(sql, file) {
   if (file === "028_vote_open_closes_intake.sql") {
     return fnBodyContains(sql, "admin_toggle_gender_open", "vote already open");
   }
+  if (file === "029_manual_refund_for_rejected.sql") {
+    return fnBodyContains(sql, "admin_mark_refund_completed", "status IN ('rejected', 'refund_requested')");
+  }
   // 알 수 없는 이후 파일은 baseline으로 스킵하지 않음
   return false;
 }

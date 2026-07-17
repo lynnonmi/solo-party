@@ -561,7 +561,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                         <p>환불 계좌: {a.refundBank} {a.refundAccount}</p>
                         <p>입금 확인: {a.depositConfirmed ? "확인됨" : "미확인"}</p>
                         {a.status === "rejected" && (
-                          <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
+                          <p className="text-destructive/90 pt-1">거절됨 — 계좌 확인 후 송금하고 「환불 완료로 표시」를 눌러 주세요.</p>
                         )}
                         {a.status === "refund_requested" && (
                           <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
@@ -582,7 +582,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                           {depositToggling ? "저장 중..." : a.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
                         </button>
                       )}
-                      {a.status === "refund_requested" && (
+                      {(a.status === "refund_requested" || a.status === "rejected") && (
                         <button
                           onClick={() => markRefundDone(a.id)}
                           disabled={refundActing}
@@ -591,10 +591,12 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                           {refundActing ? "처리 중..." : "환불 완료로 표시"}
                         </button>
                       )}
-                      {(a.status === "pending" || a.status === "approved") && (
+                      {(a.status === "pending" || a.status === "approved" || (a.status === "rejected" && !a.smsSent)) && (
                         <div className="flex gap-2 pt-1">
                           <button onClick={() => updateStatus(a.id,"approved")} disabled={a.status==="approved"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-40">승인</button>
-                          <button onClick={() => { setRejectError(""); setRejectModal(a); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors">거절</button>
+                          {a.status !== "rejected" && (
+                            <button onClick={() => { setRejectError(""); setRejectModal(a); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors">거절</button>
+                          )}
                           <button onClick={() => updateStatus(a.id,"pending")} disabled={a.status==="pending"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-40">대기</button>
                         </div>
                       )}
@@ -833,7 +835,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
             <h3 className="font-semibold mb-1">신청 거절</h3>
             <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
               <span className="text-foreground font-medium">{rejectModal.name}</span> ({rejectModal.nickname})님을 거절합니다.
-              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 투표가 진행 중이면 특히 주의하세요.
+              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 환불은 송금 후 「환불 완료로 표시」로 직접 처리하세요.
             </p>
             {rejectError && <p className="text-xs text-destructive mb-3">{rejectError}</p>}
             <div className="flex gap-2">
@@ -1376,7 +1378,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       </span>
                     </div>
                     {selected.status === "rejected" && (
-                      <p className="text-destructive/90 pt-1">거절 · 전액 환불 자동 처리 — 위 계좌로 송금하세요.</p>
+                      <p className="text-destructive/90 pt-1">거절됨 — 계좌 확인 후 송금하고 「환불 완료로 표시」를 눌러 주세요.</p>
                     )}
                     {selected.status === "refund_requested" && (
                       <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
@@ -1399,7 +1401,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       {depositToggling ? "저장 중..." : selected.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
                     </button>
                   )}
-                  {selected.status === "refund_requested" && (
+                  {(selected.status === "refund_requested" || selected.status === "rejected") && (
                     <button
                       onClick={() => markRefundDone(selected.id)}
                       disabled={refundActing}
@@ -1408,10 +1410,12 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       {refundActing ? "처리 중..." : "환불 완료로 표시"}
                     </button>
                   )}
-                  {(selected.status === "pending" || selected.status === "approved") && (
+                  {(selected.status === "pending" || selected.status === "approved" || (selected.status === "rejected" && !selected.smsSent)) && (
                     <div className="flex gap-2">
                       <button onClick={() => updateStatus(selected.id,"approved")} disabled={selected.status==="approved"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 disabled:opacity-40">승인</button>
-                      <button onClick={() => { setRejectError(""); setRejectModal(selected); }} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10">거절</button>
+                      {selected.status !== "rejected" && (
+                        <button onClick={() => { setRejectError(""); setRejectModal(selected); }} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10">거절</button>
+                      )}
                       <button onClick={() => updateStatus(selected.id,"pending")} disabled={selected.status==="pending"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 disabled:opacity-40">대기</button>
                     </div>
                   )}
@@ -1655,7 +1659,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
             <h3 className="font-semibold mb-1">신청 거절</h3>
             <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
               <span className="text-foreground font-medium">{rejectModal.name}</span> ({rejectModal.nickname})님을 거절합니다.
-              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 투표가 진행 중이면 특히 주의하세요.
+              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 환불은 송금 후 「환불 완료로 표시」로 직접 처리하세요.
             </p>
             {rejectError && <p className="text-xs text-destructive mb-3">{rejectError}</p>}
             <div className="flex gap-2">
