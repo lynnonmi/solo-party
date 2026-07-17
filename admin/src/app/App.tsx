@@ -194,11 +194,16 @@ function OfflineMatchesPanel({
       <div className="grid grid-cols-2 gap-2">
         {matches.map((m, idx) => (
           <div key={m.id} className="bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-xl px-3 py-3 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                 {idx + 1}
               </div>
               <p className="font-semibold text-sm min-w-0 flex-1 truncate">{m.person1_name} · {m.person2_name}</p>
+              <LoungeEntryCheck
+                checked={m.lounge_entered}
+                disabled={busy}
+                onCheckedChange={(entered) => { void toggle(m.id, entered); }}
+              />
               <button
                 type="button"
                 onClick={() => { void remove(m.id); }}
@@ -209,11 +214,6 @@ function OfflineMatchesPanel({
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
-            <LoungeEntryCheck
-              checked={m.lounge_entered}
-              disabled={busy}
-              onCheckedChange={(entered) => { void toggle(m.id, entered); }}
-            />
           </div>
         ))}
         {!matches.length && <p className="col-span-2 text-center text-muted-foreground text-sm py-5">수기로 추가한 오프라인 투표가 없습니다.</p>}
