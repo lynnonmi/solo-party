@@ -1390,17 +1390,23 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       getSupabase().from("approved_for_voting")
         .select("id, nickname, gender, vote_profile_photo")
         .eq("gender", oppositeGender)
-        .neq("id", voter.id),
+        .neq("id", voter.id)
+        .order("nickname", { ascending: true }),
       sb.rpc("get_my_votes"),
     ]);
     if (candRes.data) {
       setCandidates(
-        candRes.data
+        [...candRes.data]
           .map((c: Record<string, string>) => ({
             id: c.id, nickname: c.nickname, gender: c.gender as Gender,
             voteProfilePhoto: c.vote_profile_photo ?? undefined,
           }))
-          .sort((a, b) => a.nickname.localeCompare(b.nickname, "ko"))
+          .sort((a, b) =>
+            a.nickname.localeCompare(b.nickname, "ko-KR", {
+              numeric: true,
+              sensitivity: "base",
+            }),
+          ),
       );
     }
     const votes: Record<string, string> = {};
