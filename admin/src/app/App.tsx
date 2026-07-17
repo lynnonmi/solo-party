@@ -124,9 +124,6 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const [rejectModal, setRejectModal] = useState<Application | null>(null);
-  const [rejectError, setRejectError] = useState("");
-  const [rejecting, setRejecting] = useState(false);
   const [depositError, setDepositError] = useState("");
   const [depositToggling, setDepositToggling] = useState(false);
   const [voteConfirm, setVoteConfirm] = useState<null | "open" | "close" | "unclose" | "clear">(null);
@@ -209,31 +206,6 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         return;
       }
       setVoteActionError(msg);
-    }
-  };
-
-  const confirmReject = async () => {
-    if (!rejectModal) return;
-    setRejecting(true);
-    setRejectError("");
-    try {
-      await adminApi.updateStatus(rejectModal.id, "rejected");
-      setSmsError("");
-      setSmsInfo("");
-      setSmsForce(false);
-      setSmsModal({ ...rejectModal, status: "rejected", smsSent: false });
-      setRejectModal(null);
-      await refresh();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "거절 처리에 실패했습니다.";
-      if (msg.includes("만료") || msg.includes("unauthorized")) {
-        adminApi.logout();
-        onLogout();
-        return;
-      }
-      setRejectError(msg);
-    } finally {
-      setRejecting(false);
     }
   };
 
@@ -595,7 +567,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                         <div className="flex gap-2 pt-1">
                           <button onClick={() => updateStatus(a.id,"approved")} disabled={a.status==="approved"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-40">승인</button>
                           {a.status !== "rejected" && (
-                            <button onClick={() => { setRejectError(""); setRejectModal(a); }} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors">거절</button>
+                          <button onClick={() => updateStatus(a.id,"rejected")} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors">거절</button>
                           )}
                           <button onClick={() => updateStatus(a.id,"pending")} disabled={a.status==="pending"} className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-40">대기</button>
                         </div>
@@ -829,25 +801,6 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {rejectModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => !rejecting && setRejectModal(null)}>
-          <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">신청 거절</h3>
-            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-              <span className="text-foreground font-medium">{rejectModal.name}</span> ({rejectModal.nickname})님을 거절합니다.
-              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 환불은 송금 후 「환불 완료로 표시」로 직접 처리하세요.
-            </p>
-            {rejectError && <p className="text-xs text-destructive mb-3">{rejectError}</p>}
-            <div className="flex gap-2">
-              <button onClick={confirmReject} disabled={rejecting} className="flex-1 py-3 rounded-xl text-sm font-medium bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity disabled:opacity-50">
-                {rejecting ? "처리 중..." : "거절 확인"}
-              </button>
-              <button onClick={() => setRejectModal(null)} disabled={rejecting} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {voteConfirm && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-4" onClick={() => !voteActing && setVoteConfirm(null)}>
           <div className="w-full max-w-md bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
@@ -908,9 +861,6 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [deleteModal, setDeleteModal] = useState<Application | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const [rejectModal, setRejectModal] = useState<Application | null>(null);
-  const [rejectError, setRejectError] = useState("");
-  const [rejecting, setRejecting] = useState(false);
   const [depositError, setDepositError] = useState("");
   const [depositToggling, setDepositToggling] = useState(false);
   const [photoModal, setPhotoModal] = useState<string[] | null>(null);
@@ -993,32 +943,6 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         adminApi.logout();
         onLogout();
       }
-    }
-  };
-
-  const confirmReject = async () => {
-    if (!rejectModal) return;
-    setRejecting(true);
-    setRejectError("");
-    try {
-      await adminApi.updateStatus(rejectModal.id, "rejected");
-      if (selected?.id === rejectModal.id) setSelected(u => u ? { ...u, status: "rejected", smsSent: false } : u);
-      setSmsError("");
-      setSmsInfo("");
-      setSmsForce(false);
-      setSmsModal({ ...rejectModal, status: "rejected", smsSent: false });
-      setRejectModal(null);
-      await refresh();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "거절 처리에 실패했습니다.";
-      if (msg.includes("만료") || msg.includes("unauthorized")) {
-        adminApi.logout();
-        onLogout();
-        return;
-      }
-      setRejectError(msg);
-    } finally {
-      setRejecting(false);
     }
   };
 
@@ -1414,7 +1338,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                     <div className="flex gap-2">
                       <button onClick={() => updateStatus(selected.id,"approved")} disabled={selected.status==="approved"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-green-500/40 text-green-400 hover:bg-green-400/10 disabled:opacity-40">승인</button>
                       {selected.status !== "rejected" && (
-                        <button onClick={() => { setRejectError(""); setRejectModal(selected); }} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10">거절</button>
+                      <button onClick={() => updateStatus(selected.id,"rejected")} className="flex-1 py-2 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10">거절</button>
                       )}
                       <button onClick={() => updateStatus(selected.id,"pending")} disabled={selected.status==="pending"} className="flex-1 py-2 rounded-lg text-xs font-medium border border-amber-400/40 text-amber-400 hover:bg-amber-400/10 disabled:opacity-40">대기</button>
                     </div>
@@ -1648,25 +1572,6 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                 {deleting ? "삭제 중..." : "삭제 확인"}
               </button>
               <button onClick={() => setDeleteModal(null)} disabled={deleting} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {rejectModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => !rejecting && setRejectModal(null)}>
-          <div className="w-full max-w-sm bg-[#131313] border border-[rgba(240,168,190,0.30)] rounded-2xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">신청 거절</h3>
-            <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-              <span className="text-foreground font-medium">{rejectModal.name}</span> ({rejectModal.nickname})님을 거절합니다.
-              세션이 끊기고 해당 참가자의 투표·받은 투표가 삭제됩니다. 환불은 송금 후 「환불 완료로 표시」로 직접 처리하세요.
-            </p>
-            {rejectError && <p className="text-xs text-destructive mb-3">{rejectError}</p>}
-            <div className="flex gap-2">
-              <button onClick={confirmReject} disabled={rejecting} className="flex-1 py-3 rounded-xl text-sm font-medium bg-destructive text-destructive-foreground hover:opacity-90 disabled:opacity-50">
-                {rejecting ? "처리 중..." : "거절 확인"}
-              </button>
-              <button onClick={() => setRejectModal(null)} disabled={rejecting} className="flex-1 py-3 rounded-xl text-sm font-medium border border-border text-muted-foreground disabled:opacity-50">취소</button>
             </div>
           </div>
         </div>
