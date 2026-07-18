@@ -1407,6 +1407,7 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
   onUpdate: (a: Application) => void; sessionToken: string | null; onLogout: () => void;
 }) {
   const sb = getSupabase(sessionToken);
+  const loadSeq = useRef(0);
   const [candidates,  setCandidates]  = useState<Pick<Application, "id"|"nickname"|"gender"|"voteProfilePhoto">[]>([]);
   const [myVotes,     setMyVotes]     = useState<Record<string, string>>({});
   const [selectedId,  setSelectedId]  = useState<string | null>(null);
@@ -1422,44 +1423,82 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const hasVotedSelected = selected ? selected.id in myVotes : false;
   const atMaxVotes = votedCount >= MAX_VOTES && !hasVotedSelected;
 
-  const loadVoteState = async () => {
+  const loadVoteState = async (requestId: number) => {
     const oppositeGender = voter.gender === "남성" ? "여성" : "남성";
-    const [candRes, votesRes] = await Promise.all([
-      getSupabase().from("approved_for_voting")
-        .select("id, nickname, gender, vote_profile_photo")
-        .eq("gender", oppositeGender)
-        .neq("id", voter.id)
-        .order("nickname", { ascending: true }),
-      sb.rpc("get_my_votes"),
-    ]);
-    if (candRes.data) {
-      setCandidates(
-        [...candRes.data]
-          .map((c: Record<string, string>) => ({
-            id: c.id, nickname: c.nickname, gender: c.gender as Gender,
-            voteProfilePhoto: c.vote_profile_photo ?? undefined,
-          }))
-          .sort((a, b) =>
-            a.nickname.localeCompare(b.nickname, "ko-KR", {
-              numeric: true,
-              sensitivity: "base",
-            }),
-          ),
-      );
+    try {
+      const [candRes, votesRes] = await Promise.all([
+        getSupabase().from("approved_for_voting")
+          .select("id, nickname, gender, vote_profile_photo")
+          .eq("gender", oppositeGender)
+          .neq("id", voter.id)
+          .order("nickname", { ascending: true }),
+        sb.rpc("get_my_votes"),
+      ]);
+      if (requestId !== loadSeq.current) return;
+
+      if (!candRes.error && candRes.data) {
+        setCandidates(
+          [...candRes.data]
+            .map((c: Record<string, string>) => ({
+              id: c.id, nickname: c.nickname, gender: c.gender as Gender,
+              voteProfilePhoto: c.vote_profile_photo ?? undefined,
+            }))
+            .sort((a, b) =>
+              a.nickname.localeCompare(b.nickname, "ko-KR", {
+                numeric: true,
+                sensitivity: "base",
+              }),
+            ),
+        );
+      }
+
+      // 네트워크/세션 오류 시 빈 배열로 덮어쓰지 않음 (가끔 투표가 사라진 것처럼 보이던 원인)
+      if (!votesRes.error && Array.isArray(votesRes.data)) {
+        const votes: Record<string, string> = {};
+        votesRes.data.forEach((v: { voted_for_id: string; message: string }) => {
+          votes[v.voted_for_id] = v.message;
+        });
+        setMyVotes(votes);
+        try {
+          sessionStorage.setItem(`sp_my_votes_${voter.id}`, JSON.stringify(votes));
+        } catch { /* ignore */ }
+      } else if (votesRes.error) {
+        const msg = (votesRes.error.message || "").toLowerCase();
+        if (msg.includes("unauthorized")) {
+          setError("로그인이 만료되었습니다. 다시 로그인해주세요.");
+        }
+      }
+    } catch {
+      if (requestId !== loadSeq.current) return;
+      // 일시 오류: 기존 myVotes 유지
+    } finally {
+      if (requestId === loadSeq.current) setLoading(false);
     }
-    const votes: Record<string, string> = {};
-    (votesRes.data ?? []).forEach((v: { voted_for_id: string; message: string }) => {
-      votes[v.voted_for_id] = v.message;
-    });
-    setMyVotes(votes);
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadVoteState();
-    const onVisible = () => { if (document.visibilityState === "visible") loadVoteState(); };
+    // 이전 성공 결과를 먼저 복구해, 재조회 실패해도 빈 화면이 안 뜨게
+    try {
+      const cached = sessionStorage.getItem(`sp_my_votes_${voter.id}`);
+      if (cached) {
+        const parsed = JSON.parse(cached) as Record<string, string>;
+        if (parsed && typeof parsed === "object") setMyVotes(parsed);
+      }
+    } catch { /* ignore */ }
+
+    const requestId = ++loadSeq.current;
+    void loadVoteState(requestId);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        const id = ++loadSeq.current;
+        void loadVoteState(id);
+      }
+    };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    return () => {
+      loadSeq.current += 1; // in-flight 응답 무시
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [voter.id, sessionToken]);
 
   const openCandidate = (id: string) => {
@@ -1472,6 +1511,13 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
     setSelectedId(null);
     setMessage("");
     setError("");
+  };
+
+  const persistMyVotes = (votes: Record<string, string>) => {
+    setMyVotes(votes);
+    try {
+      sessionStorage.setItem(`sp_my_votes_${voter.id}`, JSON.stringify(votes));
+    } catch { /* ignore */ }
   };
 
   const handleSendVote = async () => {
@@ -1487,7 +1533,7 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
     if (rpcErr) {
       setError(voteRpcErrorMessage(rpcErr.message, "투표 전송에 실패했습니다."));
     } else {
-      setMyVotes(prev => ({ ...prev, [selected.id]: trimmed }));
+      persistMyVotes({ ...myVotes, [selected.id]: trimmed });
       closeCandidate();
     }
     setSubmitting(false);
@@ -1501,11 +1547,9 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
     if (rpcErr) {
       setError(voteRpcErrorMessage(rpcErr.message, "투표 취소에 실패했습니다."));
     } else {
-      setMyVotes(prev => {
-        const next = { ...prev };
-        delete next[selected.id];
-        return next;
-      });
+      const next = { ...myVotes };
+      delete next[selected.id];
+      persistMyVotes(next);
       setMessage("");
       closeCandidate();
     }
@@ -1649,7 +1693,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
         ]);
         if (cancelled) return;
 
-        if (votesRes.data) {
+        if (votesRes.error) {
+          // 실패 시 기존 received 유지 (빈 목록으로 덮지 않음)
+        } else if (Array.isArray(votesRes.data)) {
           setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
             voterId: r.voter_id as string,
             nickname: (r.nickname as string) || "",
@@ -1659,33 +1705,37 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           })));
         }
 
-        const mData = matchesRes.data;
-        if (mData?.length) {
-          const converted: Match[] = mData.map((m: Record<string, string>) => ({
-            id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
-            calculatedAt: m.calculated_at,
-            user1Response: m.user1_response.replace("_", "-") as MatchResponse,
-            user2Response: m.user2_response.replace("_", "-") as MatchResponse,
-          }));
-          setMatches(converted);
-
-          const otherIds = mData.map((m: Record<string, string>) =>
-            m.user1_id === voter.id ? m.user2_id : m.user1_id
-          );
-          const { data: appsData } = await getSupabase()
-            .from("approved_for_voting")
-            .select("id, nickname, vote_profile_photo")
-            .in("id", otherIds);
-          if (cancelled) return;
-          if (appsData) {
-            const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
-            appsData.forEach((a: Record<string, string>) => {
-              map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
-            });
-            setMatchApps(map);
-          }
+        if (matchesRes.error) {
+          // 실패 시 기존 matches 유지
         } else {
-          setMatches([]);
+          const mData = matchesRes.data;
+          if (mData?.length) {
+            const converted: Match[] = mData.map((m: Record<string, string>) => ({
+              id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
+              calculatedAt: m.calculated_at,
+              user1Response: m.user1_response.replace("_", "-") as MatchResponse,
+              user2Response: m.user2_response.replace("_", "-") as MatchResponse,
+            }));
+            setMatches(converted);
+
+            const otherIds = mData.map((m: Record<string, string>) =>
+              m.user1_id === voter.id ? m.user2_id : m.user1_id
+            );
+            const { data: appsData } = await getSupabase()
+              .from("approved_for_voting")
+              .select("id, nickname, vote_profile_photo")
+              .in("id", otherIds);
+            if (cancelled) return;
+            if (appsData) {
+              const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
+              appsData.forEach((a: Record<string, string>) => {
+                map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
+              });
+              setMatchApps(map);
+            }
+          } else {
+            setMatches([]);
+          }
         }
       } catch (e) {
         console.error(e);
