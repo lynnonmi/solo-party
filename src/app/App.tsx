@@ -1412,6 +1412,8 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
   const sb = getSupabase(sessionToken);
   const loadSeq = useRef(0);
   const [candidates,  setCandidates]  = useState<Pick<Application, "id"|"nickname"|"gender"|"voteProfilePhoto">[]>([]);
+  const [candidatesReady, setCandidatesReady] = useState(false);
+  const [candidatesError, setCandidatesError] = useState(false);
   const [myVotes,     setMyVotes]     = useState<Record<string, string>>({});
   const [selectedId,  setSelectedId]  = useState<string | null>(null);
   const [message,     setMessage]     = useState("");
@@ -1439,7 +1441,7 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       ]);
       if (requestId !== loadSeq.current) return;
 
-      if (!candRes.error && candRes.data) {
+      if (!candRes.error && Array.isArray(candRes.data)) {
         setCandidates(
           [...candRes.data]
             .map((c: Record<string, string>) => ({
@@ -1453,6 +1455,10 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
               }),
             ),
         );
+        setCandidatesReady(true);
+        setCandidatesError(false);
+      } else {
+        setCandidatesError(true);
       }
 
       // 네트워크/세션 오류 시 빈 배열로 덮어쓰지 않음 (가끔 투표가 사라진 것처럼 보이던 원인)
@@ -1473,10 +1479,17 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
       }
     } catch {
       if (requestId !== loadSeq.current) return;
-      // 일시 오류: 기존 myVotes 유지
+      setCandidatesError(true);
     } finally {
       if (requestId === loadSeq.current) setLoading(false);
     }
+  };
+
+  const retryLoad = () => {
+    setLoading(true);
+    setCandidatesError(false);
+    const requestId = ++loadSeq.current;
+    void loadVoteState(requestId);
   };
 
   useEffect(() => {
@@ -1563,11 +1576,47 @@ function VotePage({ voter, go, onUpdate, sessionToken, onLogout }: {
     return <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center text-muted-foreground text-sm">불러오는 중...</div>;
   }
 
-  if (!candidates.length) {
+  if (candidatesError && !candidates.length) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center">
+        <AlertCircle className="w-8 h-8 text-primary mx-auto mb-3" />
+        <p className="font-semibold mb-2">불러오지 못했습니다</p>
+        <p className="text-muted-foreground text-sm mb-6 leading-relaxed">네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+        <button
+          type="button"
+          onClick={retryLoad}
+          className="w-full py-3.5 rounded-2xl font-semibold text-sm bg-primary text-primary-foreground hover:opacity-90"
+        >
+          다시 시도
+        </button>
+        <button onClick={onLogout} className="mt-4 text-sm text-muted-foreground underline">로그아웃</button>
+      </div>
+    );
+  }
+
+  if (candidatesReady && !candidates.length) {
     return (
       <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center">
         <p className="text-muted-foreground text-sm mb-6">투표 가능한 참가자가 없습니다.</p>
         <button onClick={onLogout} className="text-sm text-muted-foreground underline">로그아웃</button>
+      </div>
+    );
+  }
+
+  if (!candidates.length) {
+    return (
+      <div className="max-w-md mx-auto px-4 pt-24 pb-16 text-center">
+        <AlertCircle className="w-8 h-8 text-primary mx-auto mb-3" />
+        <p className="font-semibold mb-2">불러오지 못했습니다</p>
+        <p className="text-muted-foreground text-sm mb-6 leading-relaxed">네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+        <button
+          type="button"
+          onClick={retryLoad}
+          className="w-full py-3.5 rounded-2xl font-semibold text-sm bg-primary text-primary-foreground hover:opacity-90"
+        >
+          다시 시도
+        </button>
+        <button onClick={onLogout} className="mt-4 text-sm text-muted-foreground underline">로그아웃</button>
       </div>
     );
   }
@@ -1677,84 +1726,120 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
   onUpdate: (a: Application) => void; sessionToken: string | null; onLogout: () => void;
 }) {
   const sb = getSupabase(sessionToken);
+  const loadSeq = useRef(0);
   const [tab,         setTab]         = useState<"received" | "matches">("received");
   const [received,    setReceived]    = useState<ReceivedVote[]>([]);
+  const [receivedReady, setReceivedReady] = useState(false);
+  const [receivedError, setReceivedError] = useState(false);
   const [matches,     setMatches]     = useState<Match[]>([]);
+  const [matchesReady, setMatchesReady] = useState(false);
+  const [matchesError, setMatchesError] = useState(false);
+  const [profilesError, setProfilesError] = useState(false);
   const [matchApps,   setMatchApps]   = useState<Record<string, { id: string; nickname: string; voteProfilePhoto?: string }>>({});
   const [loading,     setLoading]     = useState(true);
   const [respondError, setRespondError] = useState("");
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = async (requestId: number, isInitial = false) => {
+    try {
+      const [votesRes, matchesRes] = await Promise.all([
+        sb.rpc("get_votes_for_me"),
+        sb.rpc("get_my_matches"),
+      ]);
+      if (requestId !== loadSeq.current) return;
 
-    const load = async (isInitial = false) => {
-      try {
-        const [votesRes, matchesRes] = await Promise.all([
-          sb.rpc("get_votes_for_me"),
-          sb.rpc("get_my_matches"),
-        ]);
-        if (cancelled) return;
-
-        if (votesRes.error) {
-          // 실패 시 기존 received 유지 (빈 목록으로 덮지 않음)
-        } else if (Array.isArray(votesRes.data)) {
-          setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
-            voterId: r.voter_id as string,
-            nickname: (r.nickname as string) || "",
-            voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
-            photos: (r.photos as string[]) || [],
-            message: (r.message as string) || "",
-          })));
-        }
-
-        if (matchesRes.error) {
-          // 실패 시 기존 matches 유지
-        } else {
-          const mData = matchesRes.data;
-          if (mData?.length) {
-            const converted: Match[] = mData.map((m: Record<string, string>) => ({
-              id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
-              calculatedAt: m.calculated_at,
-              user1Response: m.user1_response.replace("_", "-") as MatchResponse,
-              user2Response: m.user2_response.replace("_", "-") as MatchResponse,
-            }));
-            setMatches(converted);
-
-            const otherIds = mData.map((m: Record<string, string>) =>
-              m.user1_id === voter.id ? m.user2_id : m.user1_id
-            );
-            const { data: appsData } = await getSupabase()
-              .from("approved_for_voting")
-              .select("id, nickname, vote_profile_photo")
-              .in("id", otherIds);
-            if (cancelled) return;
-            if (appsData) {
-              const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
-              appsData.forEach((a: Record<string, string>) => {
-                map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
-              });
-              setMatchApps(map);
-            }
-          } else {
-            setMatches([]);
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!cancelled && isInitial) setLoading(false);
+      if (votesRes.error) {
+        setReceivedError(true);
+      } else if (Array.isArray(votesRes.data)) {
+        setReceived(votesRes.data.map((r: Record<string, unknown>) => ({
+          voterId: r.voter_id as string,
+          nickname: (r.nickname as string) || "",
+          voteProfilePhoto: (r.vote_profile_photo as string) || undefined,
+          photos: (r.photos as string[]) || [],
+          message: (r.message as string) || "",
+        })));
+        setReceivedReady(true);
+        setReceivedError(false);
       }
-    };
 
-    void load(true);
-    const poll = setInterval(() => { void load(false); }, 12000);
+      if (matchesRes.error) {
+        setMatchesError(true);
+      } else if (Array.isArray(matchesRes.data)) {
+        const mData = matchesRes.data;
+        if (mData.length) {
+          const converted: Match[] = mData.map((m: Record<string, string>) => ({
+            id: m.id, user1Id: m.user1_id, user2Id: m.user2_id,
+            calculatedAt: m.calculated_at,
+            user1Response: m.user1_response.replace("_", "-") as MatchResponse,
+            user2Response: m.user2_response.replace("_", "-") as MatchResponse,
+          }));
+          setMatches(converted);
+          setMatchesReady(true);
+          setMatchesError(false);
+
+          const otherIds = mData.map((m: Record<string, string>) =>
+            m.user1_id === voter.id ? m.user2_id : m.user1_id
+          );
+          const { data: appsData, error: appsErr } = await getSupabase()
+            .from("approved_for_voting")
+            .select("id, nickname, vote_profile_photo")
+            .in("id", otherIds);
+          if (requestId !== loadSeq.current) return;
+          if (appsErr || !appsData) {
+            setProfilesError(true);
+          } else {
+            const map: Record<string, { id: string; nickname: string; voteProfilePhoto?: string }> = {};
+            appsData.forEach((a: Record<string, string>) => {
+              map[a.id] = { id: a.id, nickname: a.nickname, voteProfilePhoto: a.vote_profile_photo };
+            });
+            setMatchApps(map);
+            // 매칭은 있는데 상대 프로필이 일부/전부 빠지면 오류로 취급
+            const missing = otherIds.some((id: string) => !map[id]);
+            setProfilesError(missing);
+          }
+        } else {
+          setMatches([]);
+          setMatchApps({});
+          setMatchesReady(true);
+          setMatchesError(false);
+          setProfilesError(false);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      if (requestId !== loadSeq.current) return;
+      setReceivedError(true);
+      setMatchesError(true);
+    } finally {
+      if (requestId === loadSeq.current && isInitial) setLoading(false);
+    }
+  };
+
+  const retryLoad = () => {
+    setLoading(true);
+    setReceivedError(false);
+    setMatchesError(false);
+    setProfilesError(false);
+    const requestId = ++loadSeq.current;
+    void load(requestId, true);
+  };
+
+  useEffect(() => {
+    const requestId = ++loadSeq.current;
+    void load(requestId, true);
+    const poll = setInterval(() => {
+      const id = ++loadSeq.current;
+      void load(id, false);
+    }, 12000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void load(false);
+      if (document.visibilityState === "visible") {
+        const id = ++loadSeq.current;
+        void load(id, false);
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      cancelled = true;
+      loadSeq.current += 1;
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -1773,6 +1858,13 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
 
     return { m, other, myR, theirR, isUser1, status: currentStatus };
   }).filter(x => x.other);
+
+  const matchesLoadFailed =
+    (matchesError && matches.length === 0) ||
+    (profilesError && matches.length > 0 && myMatches.length === 0) ||
+    (!matchesReady && matches.length === 0 && matchesError);
+
+  const receivedLoadFailed = receivedError && received.length === 0 && !receivedReady;
 
   const respond = async (matchId: string, isUser1: boolean, response: "going" | "not-going") => {
     setRespondError("");
@@ -1793,6 +1885,21 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
                      : { ...m, user2Response: response as MatchResponse };
     }));
   };
+
+  const loadFailBlock = (
+    <div className="text-center pt-12 pb-8">
+      <AlertCircle className="w-8 h-8 text-primary mx-auto mb-3" />
+      <p className="text-lg font-semibold mb-2">불러오지 못했습니다</p>
+      <p className="text-muted-foreground text-sm mb-6 leading-relaxed">네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+      <button
+        type="button"
+        onClick={retryLoad}
+        className="w-full py-3.5 rounded-2xl font-semibold text-sm bg-primary text-primary-foreground hover:opacity-90"
+      >
+        다시 시도
+      </button>
+    </div>
+  );
 
   return (
     <div className="max-w-md mx-auto px-4 pb-16">
@@ -1832,7 +1939,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
       {loading ? (
         <p className="text-center text-muted-foreground text-sm py-12">조회 중...</p>
       ) : tab === "received" ? (
-        received.length === 0 ? (
+        receivedLoadFailed || (receivedError && !receivedReady && received.length === 0) ? (
+          loadFailBlock
+        ) : receivedReady && received.length === 0 ? (
           <div className="text-center pt-12 pb-8">
             <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
               <MessageSquare className="w-8 h-8 text-muted-foreground" />
@@ -1840,6 +1949,8 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
             <p className="text-lg font-semibold mb-2">아직 투표가 없습니다</p>
             <p className="text-muted-foreground text-sm">나에게 투표한 분이 없어요.</p>
           </div>
+        ) : received.length === 0 ? (
+          loadFailBlock
         ) : (
           <div className="space-y-4">
             {received.map(r => {
@@ -1871,7 +1982,9 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
             })}
           </div>
         )
-      ) : myMatches.length === 0 ? (
+      ) : matchesLoadFailed ? (
+        loadFailBlock
+      ) : matchesReady && matches.length === 0 ? (
         <div className="text-center pt-12 pb-8">
           <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
             <Heart className="w-8 h-8 text-muted-foreground" />
@@ -1879,8 +1992,16 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
           <p className="text-lg font-semibold mb-2">매칭 상대가 없습니다</p>
           <p className="text-muted-foreground text-sm">서로 선택한 분이 없어요.</p>
         </div>
+      ) : myMatches.length === 0 ? (
+        loadFailBlock
       ) : (
         <div className="space-y-4">
+          {profilesError && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+              <p className="text-sm text-amber-200/90 leading-relaxed">일부 상대 정보를 불러오지 못했습니다.</p>
+              <button type="button" onClick={retryLoad} className="mt-2 text-xs text-primary underline underline-offset-2">다시 시도</button>
+            </div>
+          )}
           <div className="bg-primary/8 border border-primary/20 rounded-xl px-4 py-3 mb-2">
             <p className="text-sm text-primary/90">서로 선택한 분이 있습니다! 라운지에 입장하시겠어요?</p>
           </div>
