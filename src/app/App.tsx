@@ -271,14 +271,21 @@ function normalizeContact(raw: string): string {
 /* ═══════════════════════════════════════════
    APP ROOT
 ═══════════════════════════════════════════ */
+type LoginPurpose = "vote" | "my-app";
+
 export default function App() {
   const [view,         setView]         = useState<View>("home");
   const [voter,        setVoter]        = useState<Application | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [settings,     setSettings]     = useState<VoteSettings>({ isOpen: false, isClosed: false, maleOpen: true, femaleOpen: true });
   const [appLoading,   setAppLoading]   = useState(true);
+  const [loginPurpose, setLoginPurpose] = useState<LoginPurpose>("vote");
 
   const go = (v: View) => { window.scrollTo(0, 0); setView(v); };
+  const goVoteLogin = (purpose: LoginPurpose = "vote") => {
+    setLoginPurpose(purpose);
+    go("vote-login");
+  };
 
   const fetchGlobalSettings = async () => {
     try {
@@ -306,10 +313,7 @@ export default function App() {
       // 토큰 없으면 홈을 바로 띄우고 설정만 백그라운드 로드 (포스터 지연 방지)
       if (!savedToken) {
         setAppLoading(false);
-        const currentSettings = await fetchGlobalSettings();
-        if (currentSettings?.is_open || currentSettings?.is_closed) {
-          setView("vote-login");
-        }
+        await fetchGlobalSettings();
         return;
       }
 
@@ -364,16 +368,10 @@ export default function App() {
             msg.includes("timeout");
           if (!isNetwork) {
             localStorage.removeItem("sp_voter_token");
-            if (currentSettings?.is_open || currentSettings?.is_closed) {
-              setView("vote-login");
-            }
           }
         } else {
           // error 없고 빈 결과 = 토큰 무효
           localStorage.removeItem("sp_voter_token");
-          if (currentSettings?.is_open || currentSettings?.is_closed) {
-            setView("vote-login");
-          }
         }
       } catch {
         // 예외(네트워크 등): 토큰 유지
@@ -407,6 +405,10 @@ export default function App() {
     setVoter(a);
     setSessionToken(token);
     localStorage.setItem("sp_voter_token", token);
+    if (loginPurpose === "my-app") {
+      go("my-app");
+      return;
+    }
     go(resolveVoteView(a, settings) ?? "home");
   };
 
@@ -437,10 +439,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      {view === "home"         && <HomePage go={go} settings={settings} refreshSettings={fetchGlobalSettings} hasVoter={!!voter} onVote={() => voter ? go(resolveVoteView(voter, settings) ?? "vote-login") : go("vote-login")} />}
+      {view === "home"         && <HomePage go={go} settings={settings} refreshSettings={fetchGlobalSettings} onVote={() => voter ? go(resolveVoteView(voter, settings) ?? "vote-login") : goVoteLogin("vote")} onMyApp={() => voter ? go("my-app") : goVoteLogin("my-app")} />}
       {view === "apply"        && <ApplyPage go={go} settings={settings} />}
       {view === "success"      && <SuccessPage go={go} />}
-      {view === "vote-login"   && <VoteLoginPage go={go} onLogin={handleVoteLogin} settings={settings} />}
+      {view === "vote-login"   && <VoteLoginPage go={go} onLogin={handleVoteLogin} settings={settings} purpose={loginPurpose} />}
       {view === "vote-profile" && voter && <VoteProfilePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote"         && voter && <VotePage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
       {view === "vote-result"  && voter && <VoteResultPage voter={voter} go={go} onUpdate={setVoter} sessionToken={sessionToken} onLogout={handleLogout} />}
@@ -497,7 +499,7 @@ function RecruitmentChips({ now, phaseStart, phaseEnd, maleOpen, femaleOpen }: {
 /* ═══════════════════════════════════════════
    HOME PAGE
 ═══════════════════════════════════════════ */
-function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v: View) => void; settings: VoteSettings; refreshSettings: () => Promise<any>; hasVoter: boolean; onVote: () => void }) {
+function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: View) => void; settings: VoteSettings; refreshSettings: () => Promise<any>; onVote: () => void; onMyApp: () => void }) {
   const [copied,   setCopied]   = useState(false);
 
   useEffect(() => { refreshSettings(); }, []);
@@ -524,8 +526,7 @@ function HomePage({ go, settings, refreshSettings, hasVoter, onVote }: { go: (v:
     if (intakeOpen) {
       go("apply");
     } else if (voteRunning) {
-      if (hasVoter) go("my-app");
-      else go("vote-login");
+      onMyApp();
     }
   };
   const firstDisabled = !intakeOpen && !voteRunning;
@@ -1178,11 +1179,14 @@ function SuccessPage({ go }: { go: (v: View) => void }) {
 /* ═══════════════════════════════════════════
    VOTE LOGIN PAGE
 ═══════════════════════════════════════════ */
-function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLogin: (a: Application, token: string) => void; settings: VoteSettings }) {
+function VoteLoginPage({ go, onLogin, settings, purpose }: { go: (v: View) => void; onLogin: (a: Application, token: string) => void; settings: VoteSettings; purpose: LoginPurpose }) {
   const [name,    setName]    = useState("");
   const [contact, setContact] = useState("");
   const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
+  const title = purpose === "my-app"
+    ? "내 신청서 확인"
+    : settings.isClosed ? "결과 확인" : "투표하기";
 
   const login = async () => {
     if (!name.trim() || !contact.trim()) return;
@@ -1243,7 +1247,7 @@ function VoteLoginPage({ go, onLogin, settings }: { go: (v: View) => void; onLog
     <div className="max-w-md mx-auto px-4 pb-16">
       <div className="flex items-center gap-4 pt-6 pb-8">
         <button onClick={() => go("home")} className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronLeft className="w-4 h-4" /></button>
-        <h2 className="text-lg font-semibold">{settings.isClosed ? "결과 확인" : "투표하기"}</h2>
+        <h2 className="text-lg font-semibold">{title}</h2>
       </div>
       <div className="bg-[#131313] rounded-2xl p-5 border border-[rgba(240,168,190,0.30)] mb-6">
         <div className="flex items-start gap-3">
