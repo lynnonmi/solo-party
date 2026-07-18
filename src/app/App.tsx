@@ -453,6 +453,7 @@ export default function App() {
           onUpdate={setVoter}
           onLogout={handleLogout}
           onBack={() => go(resolveVoteView(voter, settings) ?? "home")}
+          allowRefund={!settings.isOpen}
         />
       )}
       {view === "refund-request" && <RefundRequestPage go={go} />}
@@ -574,7 +575,7 @@ function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: 
           />
         </div>
         {buttons}
-        <CsFooter onRefund={() => go("refund-request")} />
+        <CsFooter />
       </div>
     );
   }
@@ -1864,18 +1865,19 @@ function VoteResultPage({ voter, go, onUpdate, sessionToken, onLogout }: {
    MY APPLICATION PAGE (Read-only view)
 ═══════════════════════════════════════════ */
 function MyApplicationPage({
-  voter, sessionToken, onUpdate, onLogout, onBack,
+  voter, sessionToken, onUpdate, onLogout, onBack, allowRefund = true,
 }: {
   voter: Application;
   sessionToken: string | null;
   onUpdate: (a: Application) => void;
   onLogout: () => void;
   onBack: () => void;
+  allowRefund?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const canRefund = voter.status === "approved";
+  const canRefund = allowRefund && voter.status === "approved";
 
   const requestRefund = async () => {
     setBusy(true);
