@@ -549,21 +549,24 @@ function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: 
   const voteActive = settings.isClosed || settings.isOpen;
   const intakeOpen = settings.maleOpen || settings.femaleOpen;
   const voteRunning = settings.isOpen;
+  const resultsMode = settings.isClosed;
+  // 투표 진행/결과 확인 때는 포스터+버튼만 (모집 일정·참가비 숨김)
+  const compactHome = voteRunning || resultsMode;
 
   // 남/여 중 하나라도 접수 중이면 참가 신청 노출 (투표 오픈 여부와 무관)
   const firstLabel = intakeOpen
     ? "참가 신청하기"
-    : voteRunning
+    : voteRunning || resultsMode
       ? "내 신청서 확인하기"
       : "신청 마감";
   const firstAction = () => {
     if (intakeOpen) {
       go("apply");
-    } else if (voteRunning) {
+    } else if (voteRunning || resultsMode) {
       onMyApp();
     }
   };
-  const firstDisabled = !intakeOpen && !voteRunning;
+  const firstDisabled = !intakeOpen && !voteRunning && !resultsMode;
 
   const buttons = (
     <div className="space-y-3 w-full">
@@ -571,7 +574,7 @@ function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: 
         onClick={firstAction}
         disabled={firstDisabled}
         className={`w-full py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed ${
-          voteRunning
+          compactHome
             ? "bg-[#080808] border-[1.5px] border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)]"
             : "bg-[#F0A8BE] text-[#080808] hover:opacity-90"
         }`}>
@@ -592,7 +595,7 @@ function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: 
     </div>
   );
 
-  if (voteRunning) {
+  if (compactHome) {
     return (
       <div className="max-w-md mx-auto min-h-screen flex flex-col justify-center px-4 pb-16">
         <div className="w-full flex justify-center pb-6">
