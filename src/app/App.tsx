@@ -584,7 +584,7 @@ function HomePage({ go, settings, refreshSettings, onVote, onMyApp }: { go: (v: 
         onClick={() => voteActive && onVote()}
         disabled={!voteActive}
         className={`w-full py-4 rounded-2xl font-bold text-[15px] transition-all active:scale-[0.98] ${
-          voteRunning
+          voteRunning || resultsMode
             ? "bg-[#F0A8BE] text-[#080808] hover:opacity-90 cursor-pointer"
             : voteActive
               ? "bg-transparent border-[1.5px] border-[#F0A8BE] text-[#F0A8BE] hover:bg-[rgba(240,168,190,0.08)] cursor-pointer"
