@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  ChevronDown, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Banknote, Trash2, X, RefreshCw,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Eye, EyeOff, Heart, LogOut, MessageSquare, Banknote, Trash2, X, RefreshCw,
 } from "lucide-react";
 import { adminApi } from "./adminApi";
 import { FormField, FInput } from "./ui";
@@ -934,7 +934,29 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
 
       {photoModal && (
         <div className="fixed inset-0 bg-black/92 z-50 flex flex-col items-center justify-center p-4" onClick={() => setPhotoModal(null)}>
-          <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[75vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
+          <div className="relative w-full max-w-lg flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            {photoModal.length > 1 && (
+              <button
+                type="button"
+                aria-label="이전 사진"
+                className="absolute left-0 z-10 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center"
+                onClick={() => setPhotoIdx(i => (i - 1 + photoModal.length) % photoModal.length)}
+              >
+                <ChevronLeft className="w-6 h-6 text-white" />
+              </button>
+            )}
+            <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[75vh] object-contain rounded-xl" />
+            {photoModal.length > 1 && (
+              <button
+                type="button"
+                aria-label="다음 사진"
+                className="absolute right-0 z-10 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center"
+                onClick={() => setPhotoIdx(i => (i + 1) % photoModal.length)}
+              >
+                <ChevronRight className="w-6 h-6 text-white" />
+              </button>
+            )}
+          </div>
           {photoModal.length > 1 && <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>{photoModal.map((_,i)=><button key={i} onClick={()=>setPhotoIdx(i)} className={`w-2.5 h-2.5 rounded-full transition-all ${i===photoIdx?"bg-primary":"bg-white/30"}`}/>)}</div>}
           <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center" onClick={() => setPhotoModal(null)}><X className="w-5 h-5 text-white" /></button>
         </div>
@@ -1764,7 +1786,29 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
 
       {photoModal && (
         <div className="fixed inset-0 bg-black/92 z-50 flex flex-col items-center justify-center p-4" onClick={() => setPhotoModal(null)}>
-          <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[80vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
+          <div className="relative w-full max-w-3xl flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            {photoModal.length > 1 && (
+              <button
+                type="button"
+                aria-label="이전 사진"
+                className="absolute left-0 z-10 w-11 h-11 rounded-full bg-white/15 flex items-center justify-center"
+                onClick={() => setPhotoIdx(i => (i - 1 + photoModal.length) % photoModal.length)}
+              >
+                <ChevronLeft className="w-6 h-6 text-white" />
+              </button>
+            )}
+            <img src={photoModal[photoIdx]} alt="" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
+            {photoModal.length > 1 && (
+              <button
+                type="button"
+                aria-label="다음 사진"
+                className="absolute right-0 z-10 w-11 h-11 rounded-full bg-white/15 flex items-center justify-center"
+                onClick={() => setPhotoIdx(i => (i + 1) % photoModal.length)}
+              >
+                <ChevronRight className="w-6 h-6 text-white" />
+              </button>
+            )}
+          </div>
           {photoModal.length > 1 && <div className="flex gap-2 mt-4" onClick={e => e.stopPropagation()}>{photoModal.map((_,i)=><button key={i} onClick={()=>setPhotoIdx(i)} className={`w-2.5 h-2.5 rounded-full ${i===photoIdx?"bg-primary":"bg-white/30"}`}/>)}</div>}
           <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center" onClick={() => setPhotoModal(null)}><X className="w-5 h-5 text-white" /></button>
         </div>
