@@ -268,20 +268,20 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   }, [tab]);
 
   const refresh = async () => {
-    const ok = await adminApi.verifySession();
-    if (!ok) {
-      adminApi.logout();
-      onLogout();
-      return;
-    }
     try {
-      const [appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
+      const [ok, appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
+        adminApi.verifySession(),
         adminApi.listApplicants(),
         adminApi.getVoteResults(),
         adminApi.getMatches(),
         adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
+      if (!ok) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
       setApps(appsRaw.map((a: Record<string, unknown>) => ({
         id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
         mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,
@@ -1083,20 +1083,20 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
 
   const refresh = async () => {
-    const ok = await adminApi.verifySession();
-    if (!ok) {
-      adminApi.logout();
-      onLogout();
-      return;
-    }
     try {
-      const [appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
+      const [ok, appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
+        adminApi.verifySession(),
         adminApi.listApplicants(),
         adminApi.getVoteResults(),
         adminApi.getMatches(),
         adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
+      if (!ok) {
+        adminApi.logout();
+        onLogout();
+        return;
+      }
       setApps(appsRaw.map((a: Record<string, unknown>) => ({
         id: a.id, name: a.name, gender: a.gender, age: a.age, nickname: a.nickname,
         mbti: a.mbti, contact: a.contact, job: a.job, jobDetail: a.job_detail,

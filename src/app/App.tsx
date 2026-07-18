@@ -271,14 +271,41 @@ function normalizeContact(raw: string): string {
 /* ═══════════════════════════════════════════
    APP ROOT
 ═══════════════════════════════════════════ */
+const SETTINGS_CACHE_KEY = "sp_vote_settings";
+
+function readCachedSettings(): VoteSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (!raw) return { isOpen: false, isClosed: false, maleOpen: true, femaleOpen: true };
+    const parsed = JSON.parse(raw) as Partial<VoteSettings>;
+    return {
+      isOpen: !!parsed.isOpen,
+      isClosed: !!parsed.isClosed,
+      closedAt: parsed.closedAt,
+      maleOpen: parsed.maleOpen ?? true,
+      femaleOpen: parsed.femaleOpen ?? true,
+    };
+  } catch {
+    return { isOpen: false, isClosed: false, maleOpen: true, femaleOpen: true };
+  }
+}
+
+function writeCachedSettings(s: VoteSettings) {
+  try {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 type LoginPurpose = "vote" | "my-app";
 
 export default function App() {
   const [view,         setView]         = useState<View>("home");
   const [voter,        setVoter]        = useState<Application | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const [settings,     setSettings]     = useState<VoteSettings>({ isOpen: false, isClosed: false, maleOpen: true, femaleOpen: true });
-  const [appLoading,   setAppLoading]   = useState(true);
+  const [settings,     setSettings]     = useState<VoteSettings>(() => readCachedSettings());
+  const [appLoading,   setAppLoading]   = useState(() => !!localStorage.getItem("sp_voter_token"));
   const [loginPurpose, setLoginPurpose] = useState<LoginPurpose>("vote");
 
   const go = (v: View) => { window.scrollTo(0, 0); setView(v); };
@@ -291,13 +318,15 @@ export default function App() {
     try {
       const { data, error } = await getSupabase().from("vote_settings").select("*").maybeSingle();
       if (data && !error) {
-        setSettings({
+        const next: VoteSettings = {
           isOpen: data.is_open,
           isClosed: data.is_closed,
           closedAt: data.closed_at,
           maleOpen: data.male_open ?? true,
-          femaleOpen: data.female_open ?? true
-        });
+          femaleOpen: data.female_open ?? true,
+        };
+        setSettings(next);
+        writeCachedSettings(next);
         return data;
       }
     } catch (e) {
@@ -313,13 +342,16 @@ export default function App() {
       // 토큰 없으면 홈을 바로 띄우고 설정만 백그라운드 로드 (포스터 지연 방지)
       if (!savedToken) {
         setAppLoading(false);
-        await fetchGlobalSettings();
+        void fetchGlobalSettings();
         return;
       }
 
-      const currentSettings = await fetchGlobalSettings();
       try {
-        const { data, error } = await getSupabase(savedToken).rpc("get_my_application");
+        const [currentSettings, appRes] = await Promise.all([
+          fetchGlobalSettings(),
+          getSupabase(savedToken).rpc("get_my_application"),
+        ]);
+        const { data, error } = appRes;
         if (data && data.length > 0 && !error) {
           const row = data[0];
           const app: Application = {
@@ -350,12 +382,13 @@ export default function App() {
           setVoter(app);
           setSessionToken(savedToken);
 
+          const cached = readCachedSettings();
           const voteSettings: VoteSettings = {
-            isOpen: currentSettings?.is_open ?? false,
-            isClosed: currentSettings?.is_closed ?? false,
-            closedAt: currentSettings?.closed_at,
-            maleOpen: currentSettings?.male_open ?? true,
-            femaleOpen: currentSettings?.female_open ?? true,
+            isOpen: currentSettings?.is_open ?? cached.isOpen,
+            isClosed: currentSettings?.is_closed ?? cached.isClosed,
+            closedAt: currentSettings?.closed_at ?? cached.closedAt,
+            maleOpen: currentSettings?.male_open ?? cached.maleOpen,
+            femaleOpen: currentSettings?.female_open ?? cached.femaleOpen,
           };
           setView(resolveVoteView(app, voteSettings) ?? "home");
         } else if (error) {
