@@ -1207,7 +1207,6 @@ function SuccessPage({ go }: { go: (v: View) => void }) {
         </div>
       </div>
       <button onClick={() => go("home")} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity">홈으로</button>
-      <button onClick={() => go("refund-request")} className="w-full py-3 mt-2 rounded-2xl text-sm text-muted-foreground border border-border hover:text-foreground">환불 요청하기</button>
       <CsFooter />
     </div>
   );
@@ -2155,7 +2154,7 @@ function MyApplicationPage({
       {voter.status === "refunded" && (
         <p className="text-sm text-muted-foreground mt-4 leading-relaxed">환불이 완료되었습니다.</p>
       )}
-      <button onClick={() => { onLogout(); onBack(); }} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">돌아가기</button>
+      <button onClick={onBack} className="w-full py-4 rounded-2xl font-semibold text-[15px] bg-primary text-primary-foreground hover:opacity-90 transition-opacity mt-6">돌아가기</button>
     </div>
   );
 }
