@@ -1050,6 +1050,10 @@ function ApplyPage({ go, settings }: { go: (v: View) => void; settings: VoteSett
               )}
             </div>
           </FormField>
+          <p className="text-xs text-muted-foreground leading-relaxed -mt-2">
+            본인의 얼굴이 선명하게 보이는 사진을 업로드해 주세요.
+            여러 명이 함께 나온 사진, 얼굴이 작게 보이거나 가려진 사진, 과도한 필터/보정으로 식별이 어려운 사진은 승인 검토가 어려울 수 있습니다.
+          </p>
           <div className="bg-[#131313] rounded-xl border border-[rgba(240,168,190,0.30)] p-4">
             <p className="text-xs tracking-widest uppercase text-primary mb-3">참가비 안내</p>
             <div className="space-y-2 text-sm">
