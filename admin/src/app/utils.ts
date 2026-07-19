@@ -60,7 +60,8 @@ export function getSmsKindLabel(status: AppStatus): string {
   return status === "rejected" ? "거절" : "승인";
 }
 
-export function statusLabel(status: AppStatus): string {
+export function statusLabel(status: AppStatus, refundCompleted = false): string {
+  if (status === "rejected" && refundCompleted) return "거절";
   const map: Record<AppStatus, string> = {
     pending: "대기",
     approved: "승인",

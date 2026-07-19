@@ -62,6 +62,7 @@ const toSnake = (a: Record<string, unknown>) => ({
   sms_sent: a.sms_sent ?? false,
   fee_confirmed: a.fee_confirmed ?? false,
   deposit_confirmed: a.deposit_confirmed ?? false,
+  refund_completed: a.refund_completed ?? false,
   submitted_at: a.submitted_at ?? null,
 });
 

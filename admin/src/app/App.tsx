@@ -293,7 +293,8 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
         refundBank: a.refund_bank, refundAccount: a.refund_account,
         status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
-        depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
+        depositConfirmed: !!a.deposit_confirmed, refundCompleted: !!a.refund_completed,
+        submittedAt: a.submitted_at,
       })) as Application[]);
       setSubs(subsRaw);
       setMatches(matchesRaw);
@@ -664,7 +665,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{a.gender} · {formatAge(a.age)} · {a.job}{a.jobDetail?` (${a.jobDetail})`:""}</p>
                     </div>
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full border shrink-0 ${statusColor[a.status]}`}>{statusLabel(a.status)}</span>
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full border shrink-0 ${statusColor[a.status]}`}>{statusLabel(a.status, !!a.refundCompleted)}</span>
                     {open ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
                   </button>
                   {open && (
@@ -688,8 +689,11 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                       <div className="text-xs text-muted-foreground border-t border-border pt-3 space-y-1">
                         <p>환불 계좌: {a.refundBank} {a.refundAccount}</p>
                         <p>입금 확인: {a.depositConfirmed ? "확인됨" : "미확인"}</p>
-                        {a.status === "rejected" && (
+                        {a.status === "rejected" && !a.refundCompleted && (
                           <p className="text-destructive/90 pt-1">거절됨 — 계좌 확인 후 송금하고 「환불 완료로 표시」를 눌러 주세요.</p>
+                        )}
+                        {a.status === "rejected" && a.refundCompleted && (
+                          <p className="text-muted-foreground pt-1">거절됨 — 환불 송금 완료</p>
                         )}
                         {a.status === "refund_requested" && (
                           <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
@@ -710,7 +714,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
                           {depositToggling ? "저장 중..." : a.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
                         </button>
                       )}
-                      {(a.status === "refund_requested" || a.status === "rejected") && (
+                      {(a.status === "refund_requested" || (a.status === "rejected" && !a.refundCompleted)) && (
                         <button
                           onClick={() => markRefundDone(a.id)}
                           disabled={refundActing}
@@ -1112,7 +1116,8 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         celebrity: a.celebrity, photos: a.photos || [], voteProfilePhoto: a.vote_profile_photo,
         refundBank: a.refund_bank, refundAccount: a.refund_account,
         status: a.status, smsSent: !!a.sms_sent, feeConfirmed: !!a.fee_confirmed,
-        depositConfirmed: !!a.deposit_confirmed, submittedAt: a.submitted_at,
+        depositConfirmed: !!a.deposit_confirmed, refundCompleted: !!a.refund_completed,
+        submittedAt: a.submitted_at,
       })) as Application[]);
       setSubs(subsRaw);
       setMatches(matchesRaw);
@@ -1310,7 +1315,13 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
     setRefundError("");
     try {
       await adminApi.markRefundCompleted(id);
-      if (selected?.id === id) setSelected(s => s ? { ...s, status: "refunded" } : s);
+      if (selected?.id === id) {
+        setSelected(s => s ? {
+          ...s,
+          status: s.status === "rejected" ? "rejected" : "refunded",
+          refundCompleted: true,
+        } : s);
+      }
       await refresh();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "환불 완료 처리에 실패했습니다.";
@@ -1488,7 +1499,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         <td className="px-4 py-3">{a.nickname}</td>
                         <td className="px-4 py-3 text-muted-foreground">{a.contact}</td>
                         <td className="px-4 py-3 text-muted-foreground text-xs">{a.job}</td>
-                        <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusBg[a.status]}`}>{statusLabel(a.status)}</span></td>
+                        <td className="px-4 py-3"><span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusBg[a.status]}`}>{statusLabel(a.status, !!a.refundCompleted)}</span></td>
                         <td className="px-4 py-3">
                           {a.depositConfirmed
                             ? <span className="text-green-400 text-xs font-medium">확인</span>
@@ -1537,8 +1548,11 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                         {selected.depositConfirmed ? "확인됨" : "미확인"}
                       </span>
                     </div>
-                    {selected.status === "rejected" && (
+                    {selected.status === "rejected" && !selected.refundCompleted && (
                       <p className="text-destructive/90 pt-1">거절됨 — 계좌 확인 후 송금하고 「환불 완료로 표시」를 눌러 주세요.</p>
+                    )}
+                    {selected.status === "rejected" && selected.refundCompleted && (
+                      <p className="text-muted-foreground pt-1">거절됨 — 환불 송금 완료</p>
                     )}
                     {selected.status === "refund_requested" && (
                       <p className="text-sky-400/90 pt-1">승인 후 본인 환불요청 — 송금 후 「환불 완료로 표시」를 눌러 주세요.</p>
@@ -1561,7 +1575,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
                       {depositToggling ? "저장 중..." : selected.depositConfirmed ? "입금 확인 취소" : "입금 확인"}
                     </button>
                   )}
-                  {(selected.status === "refund_requested" || selected.status === "rejected") && (
+                  {(selected.status === "refund_requested" || (selected.status === "rejected" && !selected.refundCompleted)) && (
                     <button
                       onClick={() => markRefundDone(selected.id)}
                       disabled={refundActing}

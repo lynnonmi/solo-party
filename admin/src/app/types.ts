@@ -38,5 +38,6 @@ export interface Application {
   smsSent?: boolean;
   feeConfirmed?: boolean;
   depositConfirmed?: boolean;
+  refundCompleted?: boolean;
   submittedAt: string;
 }
