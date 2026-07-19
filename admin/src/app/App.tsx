@@ -259,6 +259,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   const [refundError, setRefundError] = useState("");
   const [refundActing, setRefundActing] = useState(false);
   const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
+  const refreshSeq = React.useRef(0);
 
   useEffect(() => {
     localStorage.setItem(
@@ -268,6 +269,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
   }, [tab]);
 
   const refresh = async () => {
+    const requestId = ++refreshSeq.current;
     try {
       const [ok, appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
         adminApi.verifySession(),
@@ -277,6 +279,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
+      if (requestId !== refreshSeq.current) return;
       if (!ok) {
         adminApi.logout();
         onLogout();
@@ -297,6 +300,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
       setOfflineMatches(offlineRaw);
       setSettings(settingsRaw);
     } catch (e) {
+      if (requestId !== refreshSeq.current) return;
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("만료") || msg.includes("unauthorized")) {
         adminApi.logout();
@@ -304,7 +308,7 @@ function MobileAdminPage({ onLogout }: { onLogout: () => void }) {
         return;
       }
     } finally {
-      setLoading(false);
+      if (requestId === refreshSeq.current) setLoading(false);
     }
   };
 
@@ -1081,8 +1085,10 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
   const [refundError, setRefundError] = useState("");
   const [refundActing, setRefundActing] = useState(false);
   const [loungeTogglingId, setLoungeTogglingId] = useState<string | null>(null);
+  const refreshSeq = React.useRef(0);
 
   const refresh = async () => {
+    const requestId = ++refreshSeq.current;
     try {
       const [ok, appsRaw, subsRaw, matchesRaw, offlineRaw, settingsRaw] = await Promise.all([
         adminApi.verifySession(),
@@ -1092,6 +1098,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         adminApi.getOfflineMatches(),
         adminApi.getVoteSettings(),
       ]);
+      if (requestId !== refreshSeq.current) return;
       if (!ok) {
         adminApi.logout();
         onLogout();
@@ -1112,6 +1119,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
       setOfflineMatches(offlineRaw);
       setSettings(settingsRaw);
     } catch (e) {
+      if (requestId !== refreshSeq.current) return;
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("만료") || msg.includes("unauthorized")) {
         adminApi.logout();
@@ -1119,7 +1127,7 @@ function PCAdminPage({ onLogout }: { onLogout: () => void }) {
         return;
       }
     } finally {
-      setLoading(false);
+      if (requestId === refreshSeq.current) setLoading(false);
     }
   };
 
